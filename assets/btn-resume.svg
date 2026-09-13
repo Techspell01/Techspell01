@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="158" height="50" viewBox="0 0 158 50" role="img" aria-labelledby="title desc">
+<title id="title">Résumé</title>
+<desc id="desc">Résumé button</desc>
+<style><![CDATA[
+@font-face{font-family:'Press Start 2P';font-weight:400;src:url(data:font/woff;base64,d09GRgABAAAAAAQoAAwAAAAABbAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAABHU1VCAAAD/AAAACkAAAAquPq49E9TLzIAAAGIAAAARwAAAGBlq1nuY21hcAAAAeAAAAA+AAAATAGyAJ1nYXNwAAAD9AAAAAgAAAAIAAAAEGdseWYAAAIwAAAAugAAATyoihWzaGVhZAAAARwAAAA2AAAANh12/9NoaGVhAAABVAAAABoAAAAkB1QEZ2htdHgAAAHQAAAADgAAAA4D6AB9bG9jYQAAAiAAAAAOAAAADgEiAMdtYXhwAAABcAAAABgAAAAgAAkAHW5hbWUAAALsAAAA9AAAAgosyELicG9zdAAAA+AAAAATAAAAIP+4ADIAAQAAAAMAALhg3DlfDzz1AAMD6AAAAADUJyD2AAAAAObMmZQAAAB9A2sD6AAAAAcAAgAAAAAAAHicY2BkYGB+wcAAJWuZsxkYGVABIwBGNQLFAAB4nGNgZGBgYGOQYWBiAAFGBjQAAAPcACd4nGNgYX7BOIGBlYGBqYspgoGBwRtCM8YxGDEeAvJBUjDAzIAEnCODXBkOMPgynGR+AZZ8wVgGpBhBbKZ3YDEFBmYAOYEMTgAD6AB9AAAAAAAAAAAAAAAAeJxjYGBgYmBgYAZiESDJCKZZGCyANBcDB1COicGXIZghlOHk//9AMV+GIAj7/9b/G/9v+G8B1gEFAGDuDkYAAAAAAAAAIgA/AGIAiACeAAB4nE2PMQ7CMAxFnXSki0FWB6YoR6giDsXExJQDdGLijkydOkU04v9UQGMljhS/Z0e8iOTu2r2kk5OIi2kcLHxDQxrN33Iu68Mttfe399PdUZ9L5uIToJ8DhqSjIRJCo0aLKSqLSyNAYkGylFJ7+XdXGcgGA0XeQgJpSlHwM/vVCRaekPBOKYYpu/5nkQs40uSBwhQT/4JsDah9m7vUyS15s2y/Ydq5Ds2lowblTI1lnZ/XI3f+AD07YrAAAHicjZBPS0JBFMV/k6/ETR8gWgytDFQ0N4EQ/aGWISmC7kQfWpQv1Ir6BH3GPojrztw3YLV4xPBmzpx7zjv3DlBmRAmXVIAvfTl2HOqW4x322URc4swlESfU3GXEuxy4RcR7VN0nV2Q8886Se2bMWeM5oUlLu6cvJtXZVT1lpeXpSTPWPVd2YzXjQYqJsRe86JyLW5qjKj5jqpRzPoQWUrY5pWFozTE1qd7UQXB57iwrlftV+1TMjbnCv2+V/WQ9HRV2VVwNCTN1+WhsW500bXX0HkNVr4W2/q07eOt/3MVv81s7sKlWmjTM438k/zPtG5QMT8t4nGNgZgCD/1sZjBiwAAAswgHqAAABAAH//wAPeJxjYGRgYOBiUGPQYGBycfMJYeDLSSzJY5BgYAGKM/z/zwAHAG2XBV0AAAA=) format('woff')}
+
+.f-pixel{font-family:'Press Start 2P',ui-monospace,Consolas,monospace;font-weight:400}
+.f-body{font-family:'VT323',ui-monospace,Consolas,monospace;font-weight:400}
+.px{shape-rendering:crispEdges}
+.blink{animation:blink 1s steps(1) infinite}
+.pop{transform-box:fill-box;transform-origin:center;animation:pop .35s steps(3) both}
+@keyframes blink{50%{opacity:0}}
+@keyframes pop{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+
+.press{animation:press 4s steps(1) 1.8s infinite}@keyframes press{0%,8%{transform:none}9%,15%{transform:translateY(5px)}16%,100%{transform:none}}
+]]></style>
+<path class="px" d="M4 0H154V4H158V46H154V50H4V46H0V4H4Z" fill="#000000"/>
+<path class="px" d="M6 3H152V6H155V44H152V47H6V44H3V6H6Z" fill="#008751"/>
+<g class="press"><path class="px" d="M6 3H152V6H155V37H152V40H6V37H3V6H6Z" fill="#00e436"/><rect class="px" x="7" y="6" width="144" height="3" fill="#fff" fill-opacity=".35"/><g class="px"><path fill="#000000" d="M18 13h10v2h-10zM18 15h2v2h-2zM26 15h4v2h-4zM18 17h2v2h-2zM22 17h4v2h-4zM28 17h2v2h-2zM18 19h2v2h-2zM28 19h2v2h-2zM18 21h2v2h-2zM22 21h8v2h-8zM18 23h2v2h-2zM28 23h2v2h-2zM18 25h2v2h-2zM22 25h4v2h-4zM28 25h2v2h-2zM18 27h12v2h-12z"/></g><text class="f-pixel" x="44" y="30" style="font-size:16px" fill="#000000">RÉSUMÉ</text></g>
+</svg>

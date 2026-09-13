@@ -1,4 +1,4 @@
-"""Palette, fonts and small SVG helpers shared by build.py and stats.py.
+"""Arcade palette, pixel fonts and SVG helpers shared by build.py and stats.py.
 
 Standard library only — the GitHub Action runs stats.py without installing anything.
 """
@@ -6,78 +6,45 @@ from __future__ import annotations
 
 import base64
 import json
+import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FONT_DIR = ROOT / "assets" / "fonts"
 
-# Same tokens as the portfolio (techspell01.github.io/portfolio), tuned to sit on
-# GitHub's two page backgrounds: #0d1117 in dark mode, #ffffff in light.
-THEMES = {
-    "dark": dict(
-        card="#10131b", card2="#161a26", well="#0b0e15", line="#262b3c", line2="#39405a",
-        ink="#edeff8", ink2="#c4c9dc", muted="#8b92ad", accent="#ff9d4d", live="#3ddc97",
-        road="#222737", land="#1a1f2d", mix=0.0, glow=0.30, stars=0.9,
-    ),
-    "light": dict(
-        card="#fbfbfe", card2="#ffffff", well="#f1f3f9", line="#dfe2ee", line2="#c3c8dc",
-        ink="#13151f", ink2="#3d4256", muted="#6a7089", accent="#e5761f", live="#0f9d68",
-        road="#dde1ee", land="#d5dae8", mix=0.36, glow=0.17, stars=0.0,
-    ),
+# PICO-8's sixteen colours, plus skin, hair and three screen darks. One letter
+# each, so sprites can be drawn as text.
+PAL = {
+    "k": "#000000", "B": "#1d2b53", "p": "#7e2553", "G": "#008751",
+    "n": "#ab5236", "e": "#5f574f", "c": "#c2c3c7", "w": "#fff1e8",
+    "r": "#ff004d", "o": "#ffa300", "y": "#ffec27", "g": "#00e436",
+    "b": "#29adff", "l": "#83769c", "P": "#ff77a8", "f": "#ffccaa",
+    "s": "#c68642", "S": "#8d5524", "h": "#1f1414", "N": "#6b2c1f",
+    "d": "#0b0a18", "D": "#15142b", "u": "#23214a",
 }
+SCREEN, PANEL, SLOT = PAL["d"], PAL["D"], PAL["u"]
 
-HUES = dict(
-    saffron=(240, 128, 42), rose=(224, 69, 123), teal=(15, 168, 150), violet=(124, 92, 255),
-    coral=(236, 90, 82), cyan=(31, 169, 196), indigo=(66, 99, 235), lime=(150, 190, 20),
-)
-
-# One static face per family name, so browsers never synthesise a weight.
 FACES = {
-    "display": ("HA Display", 800, "'Trebuchet MS',system-ui,sans-serif"),
-    "title": ("HA Title", 700, "'Trebuchet MS',system-ui,sans-serif"),
-    "sans": ("HA Sans", 400, "system-ui,-apple-system,'Segoe UI',sans-serif"),
-    "semi": ("HA Semi", 600, "system-ui,-apple-system,'Segoe UI',sans-serif"),
-    "mono": ("HA Mono", 500, "ui-monospace,'Cascadia Mono',Consolas,monospace"),
+    "pixel": ("Press Start 2P", 400, "ui-monospace,Consolas,monospace"),
+    "body": ("VT323", 400, "ui-monospace,Consolas,monospace"),
 }
 
 BASE_CSS = """
-text{font-kerning:normal}
 %s
-.rise{animation:rise .9s cubic-bezier(.2,.8,.3,1) both}
-.ping{transform-box:fill-box;transform-origin:center;animation:ping 2.2s cubic-bezier(0,0,.2,1) infinite}
-@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-@keyframes ping{0%%{transform:scale(1);opacity:.8}75%%,100%%{transform:scale(3);opacity:0}}
+.px{shape-rendering:crispEdges}
+.blink{animation:blink 1s steps(1) infinite}
+.pop{transform-box:fill-box;transform-origin:center;animation:pop .35s steps(3) both}
+@keyframes blink{50%%{opacity:0}}
+@keyframes pop{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
-""" % "\n".join(
-    f".f-{k}{{font-family:'{fam}',{fb};font-weight:{w}}}" for k, (fam, w, fb) in FACES.items()
-)
+""" % "\n".join(f".f-{k}{{font-family:'{fam}',{fb};font-weight:{w}}}" for k, (fam, w, fb) in FACES.items())
 
 # Characters recorded by text() since the last reset — build.py subsets fonts to these.
 USED: dict[str, set[str]] = {}
 
 
 def n(v: float) -> str:
-    """Compact number for SVG attributes."""
     return f"{round(v, 2):g}"
-
-
-def parse(h: str) -> tuple[int, int, int]:
-    h = h.lstrip("#")
-    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
-
-
-def hexc(rgb) -> str:
-    return "#%02x%02x%02x" % tuple(max(0, min(255, round(v))) for v in rgb)
-
-
-def hue(name) -> str:
-    return hexc(HUES[name])
-
-
-def hue_text(name, t: dict) -> str:
-    """A hue pulled toward ink so small coloured text stays readable on light cards."""
-    ink, m = parse(t["ink"]), t["mix"]
-    return hexc(tuple(a * (1 - m) + b * m for a, b in zip(HUES[name], ink)))
 
 
 def esc(s: str) -> str:
@@ -92,10 +59,15 @@ def text(x, y, s, font, size, fill, anchor="start", ls=0.0, attrs="") -> str:
     return f'<text class="f-{font}" x="{n(x)}" y="{n(y)}" style="{style}" fill="{fill}"{a}{extra}>{esc(s)}</text>'
 
 
+def pixel_width(s: str, size: float, ls: float = 0.0) -> float:
+    """Press Start 2P is monospaced at exactly 1em per glyph."""
+    return len(s) * (size + ls)
+
+
 def font_face(key: str, woff: bytes) -> str:
     fam, weight, _ = FACES[key]
-    b64 = base64.b64encode(woff).decode()
-    return f"@font-face{{font-family:'{fam}';font-weight:{weight};src:url(data:font/woff;base64,{b64}) format('woff')}}"
+    return (f"@font-face{{font-family:'{fam}';font-weight:{weight};"
+            f"src:url(data:font/woff;base64,{base64.b64encode(woff).decode()}) format('woff')}}")
 
 
 def document(w, h, title, desc, body, css="", fonts="") -> str:
@@ -107,36 +79,112 @@ def document(w, h, title, desc, body, css="", fonts="") -> str:
     )
 
 
-def number_width(value, size, digits) -> float:
-    return sum(digits[int(ch)] for ch in str(value)) * size
+# ---------------------------------------------------------------- pixels
+def art(s: str) -> list[str]:
+    return [row for row in textwrap.dedent(s).strip("\n").split("\n")]
 
 
-def odometer(uid, x, y, value, size, fill, digits, font="display", delay=0.0, anchor="start"):
+def pixels(rows, x, y, px, pal=PAL, attrs="", cls="") -> str:
+    """Draw a sprite given as rows of palette letters ('.' is transparent).
+
+    Each colour becomes one <path> of merged horizontal runs.
+    """
+    if isinstance(rows, str):
+        rows = art(rows)
+    runs: dict[str, list[str]] = {}
+    for j, row in enumerate(rows):
+        i = 0
+        while i < len(row):
+            ch = row[i]
+            k = i + 1
+            while k < len(row) and row[k] == ch:
+                k += 1
+            if ch not in ". ":
+                runs.setdefault(ch, []).append(f"M{n(x + i * px)} {n(y + j * px)}h{n((k - i) * px)}v{n(px)}h{n(-(k - i) * px)}z")
+            i = k
+    paths = "".join(f'<path fill="{pal[ch]}" d="{"".join(d)}"/>' for ch, d in runs.items())
+    extra = f" {attrs}" if attrs else ""
+    return f'<g class="px{" " + cls if cls else ""}"{extra}>{paths}</g>'
+
+
+def size_of(rows) -> tuple[int, int]:
+    if isinstance(rows, str):
+        rows = art(rows)
+    return max(len(r) for r in rows), len(rows)
+
+
+def frames(parts: list[str], dur: float, uid: str) -> tuple[str, str]:
+    """Flip-book: show each part in turn, one slot of `dur` each."""
+    count = len(parts)
+    svg = "".join(
+        f'<g class="{uid}" style="animation-delay:{n(-((count - i) % count) / count * dur)}s{";opacity:0" if i else ""}">{p}</g>'
+        for i, p in enumerate(parts)
+    )
+    css = (f".{uid}{{animation:{uid} {n(dur)}s steps(1) infinite}}"
+           f"@keyframes {uid}{{0%{{opacity:1}}{n(100 / count)}%,100%{{opacity:0}}}}")
+    return svg, css
+
+
+def notched(x, y, w, h, c=4) -> str:
+    return (f"M{n(x + c)} {n(y)}H{n(x + w - c)}V{n(y + c)}H{n(x + w)}V{n(y + h - c)}H{n(x + w - c)}V{n(y + h)}"
+            f"H{n(x + c)}V{n(y + h - c)}H{n(x)}V{n(y + c)}H{n(x + c)}Z")
+
+
+def panel(x, y, w, h, border=PAL["w"], fill=PANEL, bw=4, shadow=True) -> str:
+    """A notched NES-style dialog box."""
+    out = []
+    if shadow:
+        out.append(f'<path class="px" d="{notched(x + 6, y + 6, w, h, bw * 2)}" fill="#000" fill-opacity=".45"/>')
+    out.append(f'<path class="px" d="{notched(x, y, w, h, bw * 2)}" fill="{border}"/>')
+    out.append(f'<path class="px" d="{notched(x + bw, y + bw, w - bw * 2, h - bw * 2, bw)}" fill="{fill}"/>')
+    return "".join(out)
+
+
+def tab(x, y, label, color, fill=PANEL, size=16) -> str:
+    """A title that sits on a panel's top border."""
+    w = pixel_width(label, size) + 20
+    return (f'<rect class="px" x="{n(x)}" y="{n(y - size / 2 - 5)}" width="{n(w)}" height="{n(size + 10)}" fill="{fill}"/>'
+            + text(x + 10, y + size / 2, label, "pixel", size, color))
+
+
+def crt(uid, x, y, w, h, radius=8) -> tuple[str, str]:
+    """Scanlines, a vignette and a slow refresh band over a screen area."""
+    svg = (f'<defs><pattern id="{uid}sl" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="2" fill="#000" fill-opacity=".22"/></pattern>'
+           f'<radialGradient id="{uid}vg" cx=".5" cy=".5" r=".75"><stop offset=".55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".6"/></radialGradient>'
+           f'<linearGradient id="{uid}rb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>'
+           f'<clipPath id="{uid}cp"><rect x="{n(x)}" y="{n(y)}" width="{n(w)}" height="{n(h)}" rx="{radius}"/></clipPath></defs>'
+           f'<g clip-path="url(#{uid}cp)" pointer-events="none">'
+           f'<rect x="{n(x)}" y="{n(y)}" width="{n(w)}" height="{n(h)}" fill="url(#{uid}sl)"/>'
+           f'<rect class="{uid}rb" x="{n(x)}" y="{n(y - 80)}" width="{n(w)}" height="80" fill="url(#{uid}rb)"/>'
+           f'<rect x="{n(x)}" y="{n(y)}" width="{n(w)}" height="{n(h)}" fill="url(#{uid}vg)"/></g>')
+    css = f".{uid}rb{{animation:{uid}rb 7s linear infinite}}@keyframes {uid}rb{{to{{transform:translateY({n(h + 80)}px)}}}}"
+    return svg, css
+
+
+def odometer(uid, x, y, value, size, fill, digits=None, font="pixel", delay=0.0, anchor="start", pad=0):
     """Digits that roll up to `value` once on load. Returns (svg, css).
 
-    `digits` holds the advance width of 0-9 in em. Every column spins through a
-    full 0-9 cycle and lands on its digit. The resting position is the final
-    number, so with animations off it still reads correctly.
+    `digits` holds each digit's advance in em (None = monospaced 1em). The
+    resting position is the final number, so with animations off it still reads.
     """
-    s = str(value)
-    lh = size * 1.5
-    total = number_width(value, size, digits)
+    s = str(value).zfill(pad)
+    widths = digits or [1.0] * 10
+    lh = size * 1.6
+    total = sum(widths[int(ch)] for ch in s) * size
     x0 = {"start": x, "middle": x - total / 2, "end": x - total}[anchor]
-    svg = [f'<clipPath id="{uid}c"><rect x="{n(x0 - 10)}" y="{n(y - size * .84)}" width="{n(total + 20)}" height="{n(size * 1.06)}"/></clipPath>',
+    svg = [f'<clipPath id="{uid}c"><rect x="{n(x0 - 4)}" y="{n(y - size * 1.05)}" width="{n(total + 8)}" height="{n(size * 1.15)}"/></clipPath>',
            f'<g clip-path="url(#{uid}c)">']
     css = []
     left = x0
     for i, ch in enumerate(s):
-        cw = digits[int(ch)] * size
+        cw = widths[int(ch)] * size
         cx = left + cw / 2
         left += cw
         steps = 10 + int(ch)
-        col = "".join(
-            text(cx, y - (steps - j) * lh, str(j % 10), font, size, fill, "middle") for j in range(steps + 1)
-        )
+        col = "".join(text(cx, y - (steps - j) * lh, str(j % 10), font, size, fill, "middle") for j in range(steps + 1))
         name = f"{uid}{i}"
         css.append(f"@keyframes {name}{{from{{transform:translateY({n(steps * lh)}px)}}to{{transform:none}}}}")
-        css.append(f".{name}{{animation:{name} 2.4s cubic-bezier(.16,1,.3,1) {n(delay + i * .09)}s both}}")
+        css.append(f".{name}{{animation:{name} 1.8s steps({steps}) {n(delay + i * .12)}s both}}")
         svg.append(f'<g class="{name}">{col}</g>')
     svg.append("</g>")
     return "".join(svg), "\n".join(css)
@@ -144,3 +192,28 @@ def odometer(uid, x, y, value, size, fill, digits, font="display", delay=0.0, an
 
 def load_metrics() -> dict:
     return json.loads((FONT_DIR / "metrics.json").read_text())
+
+
+# Sprites stats.py needs too.
+COIN = """
+..oyyo..
+.oyyyyo.
+oyywyyyo
+oyywyyyo
+oyywyyyo
+oyyyyyyo
+.oyyyyo.
+..oooo..
+"""
+TROPHY = """
+.yyyyyyyy.
+yyywwyyyyy
+y.yywyyy.y
+y.yyyyyy.y
+.yyyyyyyy.
+..yyyyyy..
+...oyyo...
+....yy....
+...oooo...
+..nnnnnn..
+"""

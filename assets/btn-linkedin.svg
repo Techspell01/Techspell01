@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="190" height="50" viewBox="0 0 190 50" role="img" aria-labelledby="title desc">
+<title id="title">Linkedin</title>
+<desc id="desc">Linkedin button</desc>
+<style><![CDATA[
+@font-face{font-family:'Press Start 2P';font-weight:400;src:url(data:font/woff;base64,d09GRgABAAAAAAQgAAwAAAAABbAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAABHU1VCAAAD9AAAACkAAAAquPq49E9TLzIAAAGIAAAARQAAAGBloFlzY21hcAAAAeAAAAA/AAAATAC6AQJnYXNwAAAD7AAAAAgAAAAIAAAAEGdseWYAAAIwAAAAsgAAATp7xobXaGVhZAAAARwAAAA2AAAANh12/9NoaGVhAAABVAAAABoAAAAkB1QEZ2htdHgAAAHQAAAAEAAAABAE4gB9bG9jYQAAAiAAAAAQAAAAEADpAUNtYXhwAAABcAAAABgAAAAgAAoAH25hbWUAAALkAAAA9AAAAgosyELicG9zdAAAA9gAAAATAAAAIP+4ADIAAQAAAAMAABJp+R9fDzz1AAMD6AAAAADUJyD2AAAAAObMmZQAAAB9A2sD6AAAAAcAAgAAAAAAAHicY2BkYGB+wcAAJWuZsxkYGVABIwBGNQLFAAB4nGNgZGBgYGeQY2BiAAFGBjQAAAQpACp4nGNgYX7BOIGBlYGBqYspgoGBwRtCM8YxGDEeAvJBUjDAyIAEnCODXBkOMLgw+DG/APGB5pTB1DC9A4spMDADACoVC8gAAAAD6AB9AAAAAAB9AAAAfQAAeJxjYGBgYmBgYAZiESDJCKZZGCyANBcDB1COicGVwZPBh8Hv/3+gmAuQ7Q1i/9/7f9f/nf93gHVAAQBGOw2zAAAAAAAAHwA1AEoAcQCAAJ14nE1PMQ7CMAx0GjHRJSCPDFHEC6KIR3ViYvIDmDrxRyamThatek6piE+RHMt356OOiMQP/k1HOhOVEDlzDokTX3NBU1J3F9TyVBHFqrU2cA8h17Ard4cf5tFNSw8uGApgV/67tyodOYXMotp9FOpmNI+t6sVUc8AhBk4VuSIWnMZgiT35XeWH7bi9lBrfA3yhFuHoJozmU+tV02/acLTghlAdqoVFR+rvC7+lXwEq3l5XAAB4nI2QT0tCQRTFf5OvxE0fIFoMrQxUNDeBEP2hliEpgu5EH1qUL9SK+gR9xj6I687cN2C1eMTwZs6ce8479w5QZkQJl1SAL305dhzqluMd9tlEXOLMJREn1NxlxLscuEXEe1TdJ1dkPPPOkntmzFnjOaFJS7unLybV2VU9ZaXl6Ukz1j1XdmM140GKibEXvOici1uaoyo+Y6qUcz6EFlK2OaVhaM0xNane1EFwee4sK5X7VftUzI25wr9vlf1kPR0VdlVcDQkzdflobFudNG119B5DVa+Ftv6tO3jrf9zFb/NbO7CpVpo0zON/JP8z7RuUDE/LeJxjYGYAg/9bGYwYsAAALMIB6gAAAQAB//8AD3icY2BkYGDgYlBj0GBgcnHzCWHgy0ksyWOQYGABijP8/88ABwBtlwVdAAAA) format('woff')}
+
+.f-pixel{font-family:'Press Start 2P',ui-monospace,Consolas,monospace;font-weight:400}
+.f-body{font-family:'VT323',ui-monospace,Consolas,monospace;font-weight:400}
+.px{shape-rendering:crispEdges}
+.blink{animation:blink 1s steps(1) infinite}
+.pop{transform-box:fill-box;transform-origin:center;animation:pop .35s steps(3) both}
+@keyframes blink{50%{opacity:0}}
+@keyframes pop{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+
+.press{animation:press 4s steps(1) 0.6s infinite}@keyframes press{0%,8%{transform:none}9%,15%{transform:translateY(5px)}16%,100%{transform:none}}
+]]></style>
+<path class="px" d="M4 0H186V4H190V46H186V50H4V46H0V4H4Z" fill="#000000"/>
+<path class="px" d="M6 3H184V6H187V44H184V47H6V44H3V6H6Z" fill="#1d2b53"/>
+<g class="press"><path class="px" d="M6 3H184V6H187V37H184V40H6V37H3V6H6Z" fill="#29adff"/><rect class="px" x="7" y="6" width="176" height="3" fill="#fff" fill-opacity=".35"/><g class="px"><path fill="#000000" d="M16 13h16v2h-16zM16 15h2v2h-2zM20 15h12v2h-12zM16 17h16v2h-16zM16 19h2v2h-2zM20 19h2v2h-2zM26 19h6v2h-6zM16 21h2v2h-2zM20 21h2v2h-2zM24 21h2v2h-2zM28 21h4v2h-4zM16 23h2v2h-2zM20 23h2v2h-2zM24 23h4v2h-4zM30 23h2v2h-2zM16 25h2v2h-2zM20 25h2v2h-2zM24 25h4v2h-4zM30 25h2v2h-2zM16 27h16v2h-16z"/></g><text class="f-pixel" x="44" y="30" style="font-size:16px" fill="#000000">LINKEDIN</text></g>
+</svg>

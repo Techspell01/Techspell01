@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the GitHub activity card from live data. The GitHub Action runs this daily.
+"""Draw the arcade high-score card from live GitHub data. The Action runs this daily.
 
     GITHUB_TOKEN=... python tools/stats.py --user Techspell01 --out dist
     python tools/stats.py --data snapshot.json --out dist      # offline, from saved API output
@@ -12,14 +12,16 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
 import os
 import sys
 import urllib.request
 from pathlib import Path
+from xml.etree import ElementTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import theme as th  # noqa: E402
-from theme import THEMES, document, hue_text, n, odometer, text  # noqa: E402
+from theme import PAL, SLOT, document, n, odometer, panel, pixels, tab, text  # noqa: E402
 
 # The portfolio is a single HTML file with the photo embedded as base64, so it
 # would make the whole profile read as "mostly HTML". Leave it out of languages.
@@ -97,16 +99,13 @@ def summarise(user: dict) -> dict:
                 continue
             size[name] = size.get(name, 0) + edge["size"]
             count[name] = count.get(name, 0) + 1
-            color[name] = edge["node"]["color"] or "#8b92ad"
+            color[name] = edge["node"]["color"] or PAL["c"]
     # Same blend github-readme-stats suggests: bytes alone let one big repo win,
     # repo count alone ignores how much code there is.
     score = {k: size[k] ** .5 * count[k] ** .5 for k in size}
     ranked = sorted(score, key=score.get, reverse=True)
     total = sum(score.values()) or 1
     langs = [{"name": k, "color": color[k], "pct": score[k] / total * 100} for k in ranked[:TOP_LANGS]]
-    rest = sum(score[k] for k in ranked[TOP_LANGS:])
-    if rest:
-        langs.append({"name": "Other", "color": "#8b92ad", "pct": rest / total * 100})
 
     return {
         "contributions": cc["contributionCalendar"]["totalContributions"],
@@ -119,80 +118,85 @@ def summarise(user: dict) -> dict:
         "longest_streak": longest,
         "weeks": [sum(d["contributionCount"] for d in w["contributionDays"]) for w in weeks][-52:],
         "languages": langs,
-        "updated": dt.date.today().strftime("%d %b %Y"),
+        "updated": dt.date.today().strftime("%d %b %Y").upper(),
     }
 
 
-def card_svg(s: dict, theme: str, digits: list[float]) -> str:
-    t = THEMES[theme]
-    W, H = 850, 304
-    X = 30
-    body, css = [], []
-    body.append(f'<rect x=".5" y=".5" width="{W - 1}" height="{H - 1}" rx="20" fill="{t["card"]}" stroke="{t["line"]}"/>')
-    body.append(text(X, 44, "GITHUB ACTIVITY · LAST 12 MONTHS", "mono", 11, t["muted"], ls=1.4))
-    body.append(text(W - X, 44, f"updated {s['updated']}", "mono", 10, t["muted"], "end"))
+def fit(s: str, size: float, max_w: float, advance: dict) -> str:
+    w = lambda t: sum(advance.get(ch, .5) for ch in t) * size
+    while len(s) > 3 and w(s) > max_w:
+        s = s[:-2] + "."
+    return s
 
-    metrics = [
-        (s["contributions"], "", "CONTRIBUTIONS", "teal"),
-        (s["commits"], "", "COMMITS", "saffron"),
-        (s["current_streak"], "day" if s["current_streak"] == 1 else "days", f"STREAK · BEST {s['longest_streak']}", "rose"),
-        (s["repos"], "", f"PUBLIC REPOS · {s['stars']} STAR{'' if s['stars'] == 1 else 'S'}", "violet"),
+
+def card_svg(s: dict, advance: dict) -> str:
+    W, H = 850, 392
+    top = 16
+    body, css = [], []
+    body.append(panel(0, top, W - 6, H - top - 6, border=PAL["b"]))
+    body.append(tab(24, top, "HIGH SCORES", PAL["b"]))
+    body.append(text(W - 36, top + 32, f"UPDATED {s['updated']}", "pixel", 8, PAL["l"], "end"))
+
+    # score table
+    rows = [
+        ("1ST", "CONTRIBUTIONS", s["contributions"], "y"),
+        ("2ND", "COMMITS", s["commits"], "c"),
+        ("3RD", "PUBLIC REPOS", s["repos"], "o"),
+        ("4TH", "BEST STREAK", s["longest_streak"], "b"),
+        ("5TH", "STREAK NOW", s["current_streak"], "P"),
     ]
-    size = 38
-    for i, (value, suffix, label, hname) in enumerate(metrics):
-        x = X + (i % 2) * 180
-        y = 106 + (i // 2) * 70
-        svg, c = odometer(f"m{i}", x - 1, y, value, size, hue_text(hname, t), digits, delay=.2 + i * .1)
+    X = 32
+    body.append(text(X, 68, "RANK", "pixel", 8, PAL["l"]) + text(X + 64, 68, "NAME", "pixel", 8, PAL["l"])
+                + text(410, 68, "SCORE", "pixel", 8, PAL["l"], "end"))
+    for i, (rank, name, value, colour) in enumerate(rows):
+        y = 102 + i * 34
+        body.append(text(X, y, rank, "pixel", 16, PAL[colour]))
+        body.append(text(X + 64, y, name, "pixel", 16, PAL[colour]))
+        svg, c = odometer(f"r{i}", 410, y, value, 16, PAL[colour], anchor="end", delay=.2 + i * .15, pad=5)
         body.append(svg)
         css.append(c)
-        if suffix:
-            body.append(text(x + th.number_width(value, size, digits) + 6, y, suffix, "semi", 14, t["muted"]))
-        body.append(text(x, y + 20, label, "mono", 10, t["ink2"], ls=1))
-    body.append(f'<line x1="400" y1="68" x2="400" y2="196" stroke="{t["line"]}"/>')
+    body.append(pixels(th.TROPHY, X + 330, 34, 2, cls="blink"))
+    body.append(f'<path class="px" d="M440 56v212" stroke="{SLOT}" stroke-width="4" stroke-dasharray="8 8"/>')
 
-    # languages: stacked bar + legend
-    lx, lw = 430, W - X - 430
-    body.append(text(lx, 84, "TOP LANGUAGES", "mono", 10, t["ink2"], ls=1))
-    body.append(f'<defs><clipPath id="bar"><rect x="{lx}" y="98" width="{lw}" height="10" rx="5"/></clipPath></defs>'
-                f'<rect x="{lx}" y="98" width="{lw}" height="10" rx="5" fill="{t["line"]}"/>')
-    segs, x = [], lx
+    # languages as block meters
+    LX = 468
+    body.append(text(LX, 68, "TOP LANGUAGES", "pixel", 8, PAL["l"]))
+    k = 0
     for i, lang in enumerate(s["languages"]):
-        w = lw * lang["pct"] / 100
-        segs.append(f'<rect class="seg" style="animation-delay:{n(.3 + i * .12)}s" x="{n(x)}" y="98" width="{n(w + .6)}" height="10" fill="{lang["color"]}"/>')
-        x += w
-    body.append(f'<g clip-path="url(#bar)">{"".join(segs)}</g>')
-    col_w = (lw - 30) / 2
-    for i, lang in enumerate(s["languages"][:8]):
-        cx = lx + (i % 2) * (col_w + 30)
-        cy = 138 + (i // 2) * 26
-        body.append(f'<circle cx="{n(cx + 5)}" cy="{n(cy - 4)}" r="4.5" fill="{lang["color"]}"/>')
-        body.append(text(cx + 17, cy, lang["name"], "semi", 13, t["ink"]))
-        body.append(text(cx + col_w, cy, f"{lang['pct']:.1f}%", "mono", 11, t["muted"], "end"))
+        y = 100 + i * 30
+        body.append(text(LX, y + 2, fit(lang["name"], 24, 112, advance), "body", 24, PAL["w"]))
+        filled = max(1, round(lang["pct"] / 5))
+        for b in range(20):
+            on = b < filled
+            fill = lang["color"] if on else SLOT
+            cls = ' class="px pop"' if on else ' class="px"'
+            delay = f' style="animation-delay:{n(.4 + k * .025)}s"' if on else ""
+            body.append(f'<rect{cls}{delay} x="{LX + 118 + b * 9}" y="{y - 13}" width="7" height="14" fill="{fill}"/>')
+            k += on
+        body.append(text(W - 36, y, f"{lang['pct']:.0f}%", "pixel", 8, PAL["c"], "end"))
 
-    # contributions per week
-    body.append(text(X, 232, "CONTRIBUTIONS PER WEEK", "mono", 10, t["muted"], ls=1))
+    # contributions as a VU meter
+    body.append(text(X, 296, "CONTRIBUTIONS · LAST 52 WEEKS", "pixel", 8, PAL["l"]))
     weeks = s["weeks"]
-    top = max(weeks + [1])
-    bw_total, gap, base, bh = W - X * 2, 3, 284, 38
-    bw = (bw_total - gap * (len(weeks) - 1)) / max(len(weeks), 1)
+    peak = max(weeks + [1])
+    levels = ["g", "g", "y", "y", "o", "r"]
+    col_w, gap, base = 12, 3, 358
     for i, c in enumerate(weeks):
-        h = max(3, bh * c / top) if c else 3
-        fill = t["accent"] if c else t["line"]
-        op = .35 + .65 * c / top if c else 1
-        body.append(f'<rect class="bar" style="animation-delay:{n(.4 + i * .016)}s" x="{n(X + i * (bw + gap))}" y="{n(base - h)}" '
-                    f'width="{n(bw)}" height="{n(h)}" rx="2" fill="{fill}" fill-opacity="{n(op)}"/>')
-
-    css.append(".seg{transform-box:fill-box;transform-origin:0 50%;animation:gx .9s cubic-bezier(.2,.8,.3,1) both}"
-               "@keyframes gx{from{transform:scaleX(0)}}"
-               ".bar{transform-box:fill-box;transform-origin:50% 100%;animation:gy .8s cubic-bezier(.2,.8,.3,1) both}"
-               "@keyframes gy{from{transform:scaleY(0)}}")
+        x = X + i * (col_w + gap)
+        lit = math.ceil(c / peak * 6) if c else 0
+        blocks = "".join(
+            f'<rect x="{x}" y="{base - (j + 1) * 7}" width="{col_w}" height="5" fill="{PAL[levels[j]]}"/>' for j in range(lit)
+        ) or f'<rect x="{x}" y="{base - 7}" width="{col_w}" height="5" fill="{SLOT}"/>'
+        body.append(f'<g class="px vu" style="animation-delay:{n(.5 + i * .02)}s">{blocks}</g>')
+    css.append(".vu{transform-box:fill-box;transform-origin:50% 100%;animation:vu .5s steps(6) both}"
+               "@keyframes vu{from{transform:scaleY(0)}}")
 
     faces = "\n".join(th.font_face(k, (th.FONT_DIR / f"{k}.woff").read_bytes()) for k in th.USED)
     th.USED.clear()
     desc = (f"{s['contributions']} contributions and {s['commits']} commits in the last year; "
-            f"current streak {s['current_streak']} days (best {s['longest_streak']}); {s['repos']} public repos. "
+            f"{s['repos']} public repos; best streak {s['longest_streak']} days, current {s['current_streak']}. "
             "Top languages: " + ", ".join(f"{l['name']} {l['pct']:.0f}%" for l in s["languages"]) + ".")
-    return document(W, H, "GitHub activity", desc, "\n".join(body), "\n".join(css), faces)
+    return document(W, H, "High scores", desc, "\n".join(body), "\n".join(css), faces)
 
 
 def main():
@@ -211,12 +215,11 @@ def main():
         user = fetch(args.user, token)
 
     stats = summarise(user)
-    digits = th.load_metrics()["display_digits"]
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "stats.json").write_text(json.dumps(stats, indent=2))
-    for theme in THEMES:
-        (out / f"github-stats-{theme}.svg").write_text(card_svg(stats, theme, digits), encoding="utf-8")
+    (out / "github-stats.svg").write_text(card_svg(stats, th.load_metrics()["body_advance"]), encoding="utf-8")
+    ElementTree.parse(out / "github-stats.svg")
     print(json.dumps({k: v for k, v in stats.items() if k != "weeks"}, indent=2))
 
 
