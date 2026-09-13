@@ -67,10 +67,10 @@ I'm a product engineer finishing a **B.Tech in AI & ML** at Chinmaya Vishwa Vidy
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Techspell01/Techspell01/main/assets/project-campus-hub-light.svg">
     <img src="https://raw.githubusercontent.com/Techspell01/Techspell01/main/assets/project-campus-hub-dark.svg" width="49%" alt="Campus Hub — events, QR ticketing and volunteer rosters for a college. Next.js, TypeScript, PostgreSQL.">
   </picture></a>
-  <a href="https://github.com/Techspell01/adukala.ai"><picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Techspell01/Techspell01/main/assets/project-adukala-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Techspell01/Techspell01/main/assets/project-adukala-light.svg">
-    <img src="https://raw.githubusercontent.com/Techspell01/Techspell01/main/assets/project-adukala-dark.svg" width="49%" alt="Adukala.AI — cook something tonight from what's left in your fridge. React, Gemini, Groq.">
+  <a href="https://github.com/Techspell01/bunkerme"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Techspell01/Techspell01/main/assets/project-bunkerme-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Techspell01/Techspell01/main/assets/project-bunkerme-light.svg">
+    <img src="https://raw.githubusercontent.com/Techspell01/Techspell01/main/assets/project-bunkerme-dark.svg" width="49%" alt="BunkerMe — an installable PWA for student attendance arithmetic. JavaScript, service worker.">
   </picture></a>
   <a href="https://github.com/Techspell01/Pg-Finder-"><picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Techspell01/Techspell01/main/assets/project-pg-finder-dark.svg">
@@ -96,7 +96,6 @@ I'm a product engineer finishing a **B.Tech in AI & ML** at Chinmaya Vishwa Vidy
 
 **Also on GitHub**
 
-- [BunkerMe](https://github.com/Techspell01/bunkerme): an installable PWA for the attendance arithmetic every student already does in their head
 - Restaurant intelligence: three ML studies from the Cognifyz internship, a [cuisine classifier](https://github.com/Techspell01/Ai-Based-Cuisine-Classification), a [recommender](https://github.com/Techspell01/Ai-Restaurant-Recommendation) and a [location analysis](https://github.com/Techspell01/Restaurants-Location-based-Analysis)
 - [Marketing channel ROI](https://github.com/Techspell01/marketing-channel-roi-analysis): referral traffic converts ~9× better than organic search, confirmed with a chi-square test on GA360 data in BigQuery
 - [Expense tracker](https://github.com/Techspell01/expense_tracker): a server-rendered Flask app, and the first thing I put on GitHub

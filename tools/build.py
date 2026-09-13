@@ -45,10 +45,9 @@ TYPED = [  # keep each under ~45 characters
 # Cycled through the browser window in the header.
 LIVE = [
     ("Campus Hub", "campus-hub-eight-rouge.vercel.app", "QR passes that expire in 30 seconds", "teal"),
-    ("Adukala.AI", "adukala-ai.vercel.app", "Dinner from what's left in the fridge", "saffron"),
     ("PG Finder", "pgfinder-mu.vercel.app", "Student housing, minus the forwards", "indigo"),
     ("MedReminder", "medreminder-tawny.vercel.app", "Missed doses, noticed by family", "rose"),
-    ("BunkerMe", "bunkerme.vercel.app", "Attendance maths as an offline PWA", "violet"),
+    ("BunkerMe", "bunkerme.vercel.app", "Attendance maths as an offline PWA", "saffron"),
 ]
 
 STATS = [  # (number, label, sub-label, hue)
@@ -80,9 +79,9 @@ PROJECTS = [  # (slug, title, eyebrow, status, description, chips, hue)
     ("campus-hub", "Campus Hub", "FULL-STACK · POSTGRES", "LIVE",
      "Events, QR ticketing and volunteer duty rosters for a college, with check-in codes that rotate every 30 seconds.",
      ["Next.js 16", "TypeScript", "PostgreSQL", "Drizzle"], "teal"),
-    ("adukala", "Adukala.AI", "AI · COOKING", "LIVE",
-     "Tell it what's actually left in your fridge and it returns something you can cook tonight, not a shopping list.",
-     ["React", "Vite", "Gemini", "Groq"], "saffron"),
+    ("bunkerme", "BunkerMe", "PWA · OFFLINE-FIRST", "LIVE",
+     "An installable PWA built around the attendance arithmetic every student already does in their head.",
+     ["PWA", "JavaScript", "Service Worker"], "saffron"),
     ("pg-finder", "PG Finder", "SEARCH · STUDENT HOUSING", "LIVE",
      "Student housing search that replaces a pile of WhatsApp forwards and dead phone numbers with one box.",
      ["React", "TypeScript", "Tailwind", "Gemini"], "indigo"),
