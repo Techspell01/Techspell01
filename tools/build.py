@@ -46,7 +46,7 @@ CARDS = [
     {"slug": "skills", "title": "Skills", "caption": "the toolbox", "accent": "#ff9f43", "icon": "code"},
     {"slug": "internships", "title": "Internships", "caption": "two in 2026", "accent": "#f2bf3a", "icon": "briefcase"},
     {"slug": "about", "title": "About me", "caption": "start here", "accent": "#ff7a59", "icon": None},
-    {"slug": "projects", "title": "Projects", "caption": "6 shipped", "accent": "#2fc4a5", "icon": "layers"},
+    {"slug": "projects", "title": "Projects", "caption": "15 projects", "accent": "#2fc4a5", "icon": "layers"},
     {"slug": "education", "title": "Education", "caption": "B.Tech · 2027", "accent": "#4d9bff", "icon": "cap"},
     {"slug": "journey", "title": "Journey", "caption": "2024 → now", "accent": "#a47bff", "icon": "path"},
 ]
@@ -454,7 +454,7 @@ def back_about(svg: Svg, acc: str) -> str:
         "based in Kochi, Kerala. I build things end to end, from the database schema to the last screen, "
         "and I don't call a project done until it's deployed."), "body", 21, TXT2, CWID, 1.5)
     out = [out]
-    stats = [("14", "public repos"), ("5", "live apps"), ("2", "internships"), ("2", "mobile apps")]
+    stats = [("16", "public repos"), ("6", "live apps"), ("2", "internships"), ("2", "mobile apps")]
     tw, ty = (CWID - 3 * 16) / 4, y + 40
     for k, (num, label) in enumerate(stats):
         tx = CX0 + k * (tw + 16)
@@ -467,50 +467,87 @@ def back_about(svg: Svg, acc: str) -> str:
     return "".join(out)
 
 
+# Every public repo apart from this one, grouped into the card's columns.
+# (name, short line for the card, longer line for the page, stack, live URL, code URL)
+G = "https://github.com/Techspell01/"
 PROJECTS = [
-    ("Campus Hub", "Live", "Events, QR tickets and volunteer rosters for a college. The check-in code rotates every 30 seconds.",
-     "Next.js · Postgres · Drizzle", "https://campus-hub-eight-rouge.vercel.app", "https://github.com/Techspell01/campus-hub"),
-    ("Weee", "Live", "A shared app for couples: plans, a live shopping list, love notes and chat, all synced live.",
-     "React · Supabase · Web Push", "https://homelist-tan.vercel.app", "https://github.com/Techspell01/weee-home"),
-    ("PG Finder", "Live", "Student housing search that replaces a pile of WhatsApp forwards with one search box.",
-     "React · TypeScript · Gemini", "https://pgfinder-mu.vercel.app", "https://github.com/Techspell01/Pg-Finder-"),
-    ("MedReminder Circle", "Live", "Medication reminders shared with the family members who'd notice a missed dose.",
-     "React · Vercel", "https://medreminder-tawny.vercel.app", "https://github.com/Techspell01/medreminder"),
-    ("BunkerMe", "Live", "An installable PWA for the attendance maths every student already does in their head.",
-     "PWA · JavaScript", "https://bunkerme.vercel.app", "https://github.com/Techspell01/bunkerme"),
-    ("Quriobot", "Mobile", "A conversational assistant built as a native mobile app, with speech and camera.",
-     "React Native · Expo", None, "https://github.com/Techspell01/quriobot"),
+    ("Live on the web", [
+        ("Campus Hub", "college events, QR passes, rosters",
+         "Events, QR tickets and volunteer rosters for a college. The check-in code rotates every 30 seconds.",
+         "Next.js · Postgres · Drizzle", "https://campus-hub-eight-rouge.vercel.app", G + "campus-hub"),
+        ("Weee", "a shared app for couples, synced live",
+         "A shared app for couples: plans, a live shopping list, love notes and chat, all synced live.",
+         "React · Supabase · Web Push", "https://homelist-tan.vercel.app", G + "weee-home"),
+        ("Adukala.AI", "what's in your fridge → dinner",
+         "Tell it what's actually left in your fridge and it returns something you can cook tonight, not a shopping list.",
+         "React · Vite · Gemini · Groq", "https://adukala-ai.vercel.app", G + "adukala.ai"),
+        ("PG Finder", "student housing in one search box",
+         "Student housing search that replaces a pile of WhatsApp forwards with one search box.",
+         "React · TypeScript · Gemini", "https://pgfinder-mu.vercel.app", G + "Pg-Finder-"),
+        ("MedReminder Circle", "med reminders the family can see",
+         "Medication reminders shared with the family members who'd notice a missed dose.",
+         "React · Vercel", "https://medreminder-tawny.vercel.app", G + "medreminder"),
+        ("BunkerMe", "attendance maths, as a PWA",
+         "An installable PWA for the attendance maths every student already does in their head.",
+         "PWA · JavaScript", "https://bunkerme.vercel.app", G + "bunkerme"),
+    ]),
+    ("Data & ML", [
+        ("Marketing Channel ROI", "1M GA sessions, BigQuery, chi-square",
+         "Tests whether channel performance gaps are real or noise. On about 1M Google Analytics sessions in BigQuery, "
+         "referral converts at 5.29% against 0.94% for organic search, confirmed with a chi-square test.",
+         "Python · SQL · BigQuery · Power BI", None, G + "marketing-channel-roi-analysis"),
+        ("Restaurant Recommender", "TF-IDF + cosine similarity",
+         "Recommends restaurants from a diner's preferences using TF-IDF vectors and cosine similarity. Cognifyz internship.",
+         "Python · scikit-learn · Streamlit", None, G + "Ai-Restaurant-Recommendation"),
+        ("Cuisine Classifier", "predicts a restaurant's cuisine",
+         "Predicts a restaurant's cuisine from structured data. Cognifyz internship.",
+         "Python · scikit-learn", None, G + "Ai-Based-Cuisine-Classification"),
+        ("Location Analysis", "where restaurants cluster, mapped",
+         "A Streamlit dashboard that maps restaurants and flags saturated markets, top-rated areas and premium "
+         "clusters. Cognifyz internship.", "Python · Streamlit · pandas", None, G + "Restaurants-Location-based-Analysis"),
+    ]),
+    ("Mobile & hardware", [
+        ("Quriobot", "an AI assistant as a native app",
+         "A conversational assistant built as a native mobile app, with speech and camera.",
+         "React Native · Expo", None, G + "quriobot"),
+        ("NFC Habit Tracker", "tap an NFC tag to log a habit",
+         "Log a habit by tapping your phone on a physical NFC tag. Nothing to open.",
+         "Android · NFC", None, G + "nfc-habit-tracker"),
+    ]),
+    ("Also built", [
+        ("Expense Tracker", "Flask, and my very first repo",
+         "A server-rendered Flask app, and the first thing I put on GitHub.",
+         "Python · Flask", None, G + "expense_tracker"),
+        ("Pennundo", "a Kerala dating-app prototype",
+         "A playful Kerala dating-app prototype: Google sign-in, a profile builder and a distance radar, in one HTML file.",
+         "HTML · JavaScript", None, G + "pennundo-web"),
+        ("Portfolio", "one hand-built HTML file",
+         "My portfolio site: one hand-built HTML file with no framework, template or build step.",
+         "HTML · CSS · JavaScript", PORTFOLIO, G + "portfolio"),
+    ]),
 ]
-MORE_PROJECTS = [
-    ("[NFC Habit Tracker](https://github.com/Techspell01/nfc-habit-tracker)",
-     "log a habit by tapping your phone on a physical NFC tag. Nothing to open"),
-    ("Restaurant intelligence", "three ML studies from the Cognifyz internship: a "
-     "[cuisine classifier](https://github.com/Techspell01/Ai-Based-Cuisine-Classification), a "
-     "[recommender](https://github.com/Techspell01/Ai-Restaurant-Recommendation) and a "
-     "[location analysis](https://github.com/Techspell01/Restaurants-Location-based-Analysis)"),
-    ("[Marketing channel ROI](https://github.com/Techspell01/marketing-channel-roi-analysis)",
-     "referral traffic converts ~9× better than organic search, confirmed with a chi-square test on GA360 data in BigQuery"),
-    ("[Expense tracker](https://github.com/Techspell01/expense_tracker)",
-     "a server-rendered Flask app, and the first thing I put on GitHub"),
-]
+COLUMNS = [[0], [1], [2, 3]]  # which groups stack in each column of the card
 
 
 def back_projects(svg: Svg, acc: str) -> str:
     ink = dark(acc)
     out = []
-    gap, cols = 16, 3
-    tw, th = (CWID - gap * (cols - 1)) / cols, 168
-    for k, (name, status, desc, stack, _, _) in enumerate(PROJECTS):
-        tx, ty = CX0 + (k % cols) * (tw + gap), CY0 - 18 + (k // cols) * (th + gap)
-        out.append(tile(tx, ty, tw, th, tint(acc, .92), tint(acc, .62)))
-        pill_bg = {"Live": "#2fbf71", "Mobile": "#4d9bff", "Hardware": "#ff9f43"}[status]
-        pw = width(status, "mono", 11.5) + 16
-        room = tw - 36 - pw - 10
-        out.append(svg.text(tx + 18, ty + 34, name, "semi", min(19, 19 * room / width(name, "semi", 19)), TXT))
-        out.append(f'<rect x="{n(tx + tw - 18 - pw)}" y="{n(ty + 17)}" width="{n(pw)}" height="22" rx="11" fill="{pill_bg}"/>')
-        out.append(svg.text(tx + tw - 18 - pw / 2, ty + 32, status, "mono", 11.5, "#fff", "middle"))
-        out.append(svg.para(tx + 18, ty + 62, desc, "body", 15, TXT2, tw - 36, 1.42)[0])
-        out.append(svg.text(tx + 18, ty + th - 18, stack, "mono", 12, ink))
+    gap = 16
+    cw = (CWID - gap * 2) / 3
+    for col, groups in enumerate(COLUMNS):
+        x, y = CX0 + col * (cw + gap), CY0 - 22
+        out.append(tile(x, y, cw, 334, tint(acc, .92), tint(acc, .62)))
+        x, y = x + 18, y + 32
+        for g in groups:
+            label, items = PROJECTS[g]
+            out.append(svg.text(x, y, label.upper(), "mono", 12, ink, ls=1.5))
+            y += 30
+            for name, line, *_ in items:
+                out.append(svg.text(x, y, name, "semi", 16.5, TXT))
+                size = min(13.5, 13.5 * (cw - 36) / width(line, "body", 13.5))
+                out.append(svg.text(x, y + 19, line, "body", size, TXT2))
+                y += 46
+            y += 8
     return "".join(out)
 
 
@@ -652,7 +689,7 @@ def back_contact(svg: Svg, acc: str) -> str:
 
 BACKS = {
     "about": ("Hi, I'm Harinand.", back_about),
-    "projects": ("Things I've shipped", back_projects),
+    "projects": ("Everything I've built", back_projects),
     "internships": ("Where I've worked", back_internships),
     "skills": ("What I build with", back_skills),
     "education": ("Where I study", back_education),
@@ -737,12 +774,14 @@ def readme(strips: list[int]) -> str:
 
 def page_links(slug: str) -> str:
     if slug == "projects":
-        rows = "\n".join(
-            f"| **{name}** | {desc} | " + " · ".join(x for x in ([f"[Live]({live})"] if live else []) + [f"[Code]({code})"]) + " |"
-            for name, _, desc, _, live, code in PROJECTS
-        )
-        more = "\n".join(f"- **{name}**: {desc}" for name, desc in MORE_PROJECTS)
-        return f"| Project | What it is | Links |\n|---|---|---|\n{rows}\n\n**Also built**\n\n{more}\n"
+        out = []
+        for label, items in PROJECTS:
+            rows = "\n".join(
+                f"| **{name}** | {desc} | {stack} | " + " · ".join(([f"[Live]({live})"] if live else []) + [f"[Code]({code})"]) + " |"
+                for name, _, desc, stack, live, code in items
+            )
+            out.append(f"### {label}\n\n| Project | What it is | Built with | Links |\n|---|---|---|---|\n{rows}\n")
+        return "\n".join(out)
     if slug == "internships":
         return "\n".join(
             f"**{role} · {org}** · {when} · {where}  \n" + " ".join(points) + "\n"
