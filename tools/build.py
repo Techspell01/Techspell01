@@ -1,1171 +1,812 @@
 #!/usr/bin/env python3
-"""Build the arcade-style SVGs in assets/.
+"""Builds the profile: one screen with a fan of cards, and a page for each card.
 
     pip install fonttools
     python tools/build.py
 
-Everything personal is in the DATA block, and every sprite is drawn as text in
-the SPRITES block (one letter per pixel, colours in theme.PAL). Edit, rerun,
-commit assets/. The high-score card and snake come from the GitHub Action
-(tools/stats.py), not from here.
+A README can't run scripts, so a card can't open in place. Instead the fan is
+drawn once and cut into vertical strips, one per card, and each strip links to
+cards/<slug>.md. That page opens on an SVG of the same card flying out of the
+fan and flipping over to show its details. Clicking it goes back to the profile.
+
+What the cards say lives in CARDS and the back_* functions. Edit, rerun, commit
+README.md, cards/ and assets/.
 """
 from __future__ import annotations
 
+import base64
 import io
-import json
 import math
-import random
-import sys
+from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
-from xml.etree import ElementTree
 
 from fontTools import subset
 from fontTools.ttLib import TTFont
-from fontTools.varLib import instancer
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import theme as th  # noqa: E402
-from theme import PAL, PANEL, SCREEN, SLOT, art, crt, document, frames, n, notched, panel, pixel_width, pixels, size_of, tab, text  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent
+FONT_DIR = ROOT / "tools" / "fonts"
+ASSETS = ROOT / "assets"
+PAGES = ROOT / "cards"
 
-SRC_FONTS = Path(__file__).resolve().parent / "fonts"
-OUT = th.ROOT / "assets"
-
-# =====================================================================
-# DATA
-# =====================================================================
-NAME = "HARINAND AS"
-SUBTITLE = "PRODUCT ENGINEER · AI & ML"
-HUD = [("HARINAND", "000014"), ("LIVE", "×05"), ("WORLD", "KL-07"), ("CLASS", "2027")]  # score = public repos
-PROMPTS = ["▶ PRESS START", "▶ OPEN TO WORK", "▶ KOCHI · KERALA"]
-COPYRIGHT = "© 2026 TECHSPELL01 · MADE IN KERALA"
-
-BUTTONS = [  # (slug, label, icon, face, edge, ink)
-    ("portfolio", "PORTFOLIO", "star", "y", "o", "k"),
-    ("linkedin", "LINKEDIN", "linkedin", "b", "B", "k"),
-    ("email", "EMAIL", "mail", "r", "p", "w"),
-    ("resume", "RÉSUMÉ", "scroll", "g", "G", "k"),
-]
-
-PLAYER = [
-    ("NAME", "Harinand AS"),
-    ("CLASS", "Product engineer"),
-    ("GUILD", "B.Tech AI & ML · class of 2027"),
-    ("BASE", "Kochi, Kerala, India"),
-]
-PLAYER_STATS = [  # (label, count, icon, colour) — real numbers, drawn as items
-    ("SHIPPED", 14, "coin", "y"),
-    ("LIVE", 5, "heart", "r"),
-    ("QUESTS", 2, "star", "o"),
-    ("MOBILE", 2, "phone", "b"),
-]
-SPECIAL = "Turns half-formed ideas into live URLs"
-
-BOSS = dict(
-    eyebrow="WORLD 4 · FINAL-YEAR PROJECT",
-    title=["FISHING BOAT", "SAFETY SYSTEM"],
-    desc=("Capsize and distress detection for small Kerala fishing boats. A Random Forest runs "
-          "on the ESP32 itself and relays the alert to shore over LoRa, so it works exactly "
-          "where there is no signal."),
-    powerups=["ESP32", "C/C++", "emlearn", "LoRa", "FastAPI", "React"],
-    phase=1, phases=7, phase_label="SENSING RIG",
-)
-
-LEVELS = [  # (slug, world, title, status, description, power-ups, colour, icon)
-    ("campus-hub", "WORLD 1-1", "CAMPUS HUB", "LIVE",
-     "Events, QR tickets and volunteer rosters for a college. Check-in codes rotate every 30 seconds.",
-     ["Next.js", "Postgres", "Drizzle"], "g", "qr"),
-    ("pg-finder", "WORLD 1-2", "PG FINDER", "LIVE",
-     "Student housing search that replaces a pile of WhatsApp forwards with one search box.",
-     ["React", "TypeScript", "Gemini"], "b", "house"),
-    ("medreminder", "WORLD 1-3", "MEDREMINDER CIRCLE", "LIVE",
-     "Medication reminders shared with the family members who would notice a missed dose.",
-     ["React", "Firebase", "PWA"], "P", "pill"),
-    ("bunkerme", "WORLD 1-4", "BUNKERME", "LIVE",
-     "An installable PWA for the attendance maths every student already does in their head.",
-     ["PWA", "JavaScript", "Offline"], "o", "calendar"),
-    ("quriobot", "WORLD 2-1", "QURIOBOT", "MOBILE",
-     "A conversational assistant with speech and camera input, built as a native mobile app.",
-     ["React Native", "Expo"], "l", "robot"),
-    ("nfc-habit-tracker", "WORLD 3-1", "NFC HABIT TRACKER", "HARDWARE",
-     "Log a habit by tapping your phone on a physical NFC tag. Nothing to open, no guilt.",
-     ["Android", "NFC"], "y", "nfc"),
-]
-
-INVENTORY = [  # (category, icon, items)
-    ("LANGUAGES", "sword", ["Python", "TypeScript", "JavaScript", "HTML", "CSS", "C/C++"]),
-    ("FRONT END", "shield", ["React", "Next.js", "Vite", "Tailwind", "Motion", "PWA"]),
-    ("BACK END", "gear", ["FastAPI", "Flask", "PostgreSQL", "Drizzle", "SQLite", "Firebase"]),
-    ("AI & LLMS", "gem", ["Gemini API", "Claude API", "Groq API", "LangGraph", "Qdrant RAG", "Prompting"]),
-    ("DATA & ML", "potion", ["scikit-learn", "pandas", "NumPy", "OpenCV", "Streamlit", "BigQuery"]),
-    ("MOBILE", "phone", ["React Native", "Expo Router", "EAS Build", "Reanimated", "NFC"]),
-    ("EDGE", "chip", ["ESP32", "PlatformIO", "emlearn", "LoRa", "Raspberry Pi"]),
-    ("TOOLS", "wrench", ["Git", "GitHub", "Vercel", "uv", "Android Studio"]),
-]
-
-WORLD_MAP = [  # (date, title, sub)
-    ("JUL 2024", "Made the account", "then 19 quiet months"),
-    ("MAR 2026", "First repos public", "Flask app + PWA in 48h"),
-    ("JUN 2026", "Two internships", "Litmus7 · Cognifyz"),
-    ("AUG 2026", "3 apps in 3 days", "all live on Vercel"),
-    ("SEP 2026", "Campus Hub", "~10k lines in a week"),
-    ("NOW", "Boss stage", "boat safety system"),
-]
-
+USER = "Techspell01"
+RAW = f"https://raw.githubusercontent.com/{USER}/{USER}/main"
+BLOB = f"https://github.com/{USER}/{USER}/blob/main"
+PROFILE = f"https://github.com/{USER}"
+PORTFOLIO = "https://techspell01.github.io/portfolio/"
+RESUME = PORTFOLIO + "Harinand-AS-Resume.pdf"
+LINKEDIN = "https://www.linkedin.com/in/harinand-as/"
 EMAIL = "harinand200406@gmail.com"
 
 # =====================================================================
-# SPRITES — one letter per pixel, '.' is transparent (colours: theme.PAL)
+# CARDS, left to right across the fan. The middle one sits in front.
 # =====================================================================
-HEAD = """
-.....hhhhhh.....
-....hhhhhhhhh...
-...hhhhhhhhhhh..
-...hhhhhhsssh...
-...hhhhsssksss..
-...hhhSsssksss..
-....hhSssssss...
-.....sssSSs.....
-"""
-BODY = {
-    "a": """
-....oooooooo....
-...ooooooooooss.
-..sooowoooooo...
-....nnnnnnnnn...
-""",
-    "b": """
-....oooooooo....
-...oooooooooo...
-...sooowooooos..
-....nnnnnnnnn...
-""",
-}
-LEGS = {
-    "a": """
-....BBBBBBBB....
-...BBBB..BBBB...
-..BBB......BBB..
-.kww........kww.
-""",
-    "b": """
-....BBBBBBBB....
-.....BBBBBB.....
-.....BBB.BB.....
-....kww..kww....
-""",
-    "c": """
-....BBBBBBBB....
-....BBB..BBB....
-...BBB....BBB...
-..kww......kww..
-""",
-}
+CARDS = [
+    {"slug": "contact", "title": "Contact", "caption": "say hi", "accent": "#ff6b6b", "icon": "plane"},
+    {"slug": "skills", "title": "Skills", "caption": "the toolbox", "accent": "#ff9f43", "icon": "code"},
+    {"slug": "internships", "title": "Internships", "caption": "two in 2026", "accent": "#f2bf3a", "icon": "briefcase"},
+    {"slug": "about", "title": "About me", "caption": "start here", "accent": "#ff7a59", "icon": None},
+    {"slug": "projects", "title": "Projects", "caption": "6 shipped", "accent": "#2fc4a5", "icon": "layers"},
+    {"slug": "education", "title": "Education", "caption": "B.Tech · 2027", "accent": "#4d9bff", "icon": "cap"},
+    {"slug": "journey", "title": "Journey", "caption": "2024 → now", "accent": "#a47bff", "icon": "path"},
+]
+MID = len(CARDS) // 2
 
-
-def hero(body="b", legs="b", blink=False):
-    head = art(HEAD)
-    if blink:
-        head = [r.replace("k", "S") for r in head]
-    return head + art(BODY[body]) + art(LEGS[legs])
-
-
-RUN = [hero("a", "a"), hero("b", "b"), hero("a", "c")]
-
-BUG = ["""
-..k......k..
-...k....k...
-..gggggggg..
-.gGggGGggGg.
-gggggggggggg
-gkwgggggkwgg
-.gggggggggg.
-..g.g..g.g..
-.g..g..g..g.
-""", """
-..k......k..
-...k....k...
-..gggggggg..
-.gGggGGggGg.
-gggggggggggg
-gkwgggggkwgg
-.gggggggggg.
-.g.g..g..g..
-..g..g..g.g.
-"""]
-BUG_FLAT = """
-............
-............
-............
-............
-............
-..k......k..
-.gggggggggg.
-gxxgggggxxgg
-gggggggggggg
-"""
-QBLOCK = """
-kkkkkkkkkk
-kyoooooook
-kooowwwook
-koowoowwok
-kooooowwok
-koooowwook
-kooooooook
-koooowwook
-kyoooooonk
-kkkkkkkkkk
-"""
-COIN_FRAMES = [th.COIN, """
-...oyo..
-..oyyyo.
-..oywyo.
-..oywyo.
-..oywyo.
-..oyyyo.
-..oyyyo.
-...ooo..
-""", """
-....oy..
-....oy..
-....oy..
-....oy..
-....oy..
-....oy..
-....oy..
-....oo..
-"""]
-HEART = """
-.rr.rr.
-rrwrrrr
-rrrrrrr
-.rrrrr.
-..rrr..
-...r...
-"""
-STAR = """
-...yy...
-...yy...
-yyyyyyyy
-.yyyyyy.
-..yyyy..
-.yy..yy.
-yy....yy
-"""
-PHONE = """
-.ccccc.
-.cbbbc.
-.cbwbc.
-.cbbbc.
-.cbbbc.
-.cbbbc.
-.ccwcc.
-"""
-PALM = """
-....GG...GG...
-..GGggG.GggGG.
-.GggGGggggGGgG
-Gg..GgggggG..g
-G..Gg.nNn.gG.G
-...G..NnN..G..
-.......n......
-.......nn.....
-........n.....
-........nn....
-........nn....
-........nn....
-.......nn.....
-.......nn.....
-......nn......
-......nn......
-......nn......
-.....nnnn.....
-"""
-GROUND = """
-gggggggggggggggg
-gGgggGgggggGgggG
-GnGGnGGnGGGnGGnG
-nnnnnnnnnnnnnnnn
-nnNnnnnnnnNnnnnn
-nnnnnnNnnnnnnnNn
-nNnnnnnnnnnnnnnn
-nnnnnnnnNnnnnnnn
-nnnnNnnnnnnnNnnn
-nnnnnnnnnnnnnnnn
-nNnnnnnnnNnnnnnn
-nnnnnnNnnnnnnnnN
-"""
-MOON = """
-...ffff...
-..ffwwff..
-.ffffffcf.
-fffcffffff
-fffffffcff
-ffcfffffff
-ffffffcfff
-.ffcfffff.
-..ffffff..
-...ffff...
-"""
-STORM = """
-.......llll.....llll.......
-....lllllllll.lllllllll....
-..lllllllllllllllllllllll..
-.lllllllllllllllllllllllll.
-llllkkllllllllllllllkkllll.
-lllllrkkllllllllllkkrlllll.
-lllllrrlllllllllllllrrllll.
-llllllllllkkkkkkkllllllllll
-.llllllllkllllllllkllllll..
-..eeeeeeeeeeeeeeeeeeeeee...
-...b...b...b...b...b...b...
-"""
-BOLT = """
-..yyy.
-.yyy..
-yyy...
-yyyyy.
-..yyy.
-.yyy..
-.yy...
-yy....
-"""
-BOAT = """
-..........r.........
-..........k.........
-..........k.........
-......wwwwkwww......
-......wbbwkwbbw.....
-......wwwwwwwww.....
-rrrrrrrrrrrrrrrrrrrr
-.rwwwwwwwwwwwwwwwwr.
-..rrrrrrrrrrrrrrrr..
-...nnnnnnnnnnnnnn...
-"""
-FISH = ["""
-..xx....
-.xxxx.x.
-xkxxxxx.
-.xxxx.x.
-..xx....
-""", """
-..xx....
-.xxxx..x
-xkxxxxxx
-.xxxx..x
-..xx....
-"""]
-LIGHTHOUSE = """
-....kk....
-...kyyk...
-..kyyyyk..
-..kkkkkk..
-...rrrr...
-...rrrr...
-...wwww...
-...wwww...
-..rrrrrr..
-..rrrrrr..
-..wwwwww..
-..wwwwww..
-..rrrrrr..
-.rrrrrrrr.
-.wwwwwwww.
-.wwwwwwww.
-.rrrrrrrr.
-eeeeeeeeee
-"""
-WAVE = """
-....ww......ww..
-..wbbbw...wbbbw.
-bbbbbbbbbbbbbbbb
-BBbbBBBBBBbbBBBB
-"""
-CASTLE = """
-k.k.k......k.k.k
-wwwww......wwwww
-wcwcw.rr...wcwcw
-wwwww.rrr..wwwww
-wwwww.r....wwwww
-wwwwwwwwwwwwwwww
-wcwwwwwkkwwwwwcw
-wwwwwwkkkkwwwwww
-wwwwwwkkkkwwwwww
-wwwwwwkkkkwwwwww
-"""
-FLAG2 = """
-k.k.k......k.k.k
-wwwww......wwwww
-wcwcw.rrr..wcwcw
-wwwww.rr...wwwww
-wwwww.r....wwwww
-wwwwwwwwwwwwwwww
-wcwwwwwkkwwwwwcw
-wwwwwwkkkkwwwwww
-wwwwwwkkkkwwwwww
-wwwwwwkkkkwwwwww
-"""
-
-ICONS8 = {  # 'x' takes the ink colour passed in
-    "star": "...xx...\n...xx...\nxxxxxxxx\n.xxxxxx.\n..xxxx..\n.xx..xx.\nxx....xx",
-    "linkedin": "xxxxxxxx\nx.xxxxxx\nxxxxxxxx\nx.x..xxx\nx.x.x.xx\nx.x.xx.x\nx.x.xx.x\nxxxxxxxx",
-    "mail": "xxxxxxxx\nxx....xx\nx.x..x.x\nx..xx..x\nx......x\nxxxxxxxx",
-    "scroll": ".xxxxx..\n.x...xx.\n.x.xx.x.\n.x....x.\n.x.xxxx.\n.x....x.\n.x.xx.x.\n.xxxxxx.",
-    "sword": "......ww\n.....wcw\n....wcw.\n.n.wcw..\n..ncw...\n..nn....\n.n..n...\nn.......",
-    "shield": ".bbbbbb.\nbwwbbbbb\nbwbbbbbb\nbbbbbbbb\nbbbbbbbb\n.bbbbbb.\n..bbbb..\n...bb...",
-    "gear": "...cc...\n.c.cc.c.\n..cccc..\ncccu.ccc\ncccu.ccc\n..cccc..\n.c.cc.c.\n...cc...",
-    "gem": "..pppp..\n.pPPPPp.\npPwPPPPp\npPPPPPPp\n.pPPPPp.\n..pPPp..\n...pp...",
-    "potion": "...nn...\n...ww...\n..w..w..\n.wggggw.\nwgggwggw\nwggggggw\n.wggggw.\n..wwww..",
-    "phone": ".kkkkk..\n.kbbbk..\n.kbwbk..\n.kbbbk..\n.kbbbk..\n.kkckk..",
-    "chip": ".c.c.c..\nceeeeec.\n.eyeee..\nceeeeec.\n.eeeee..\nceeeeec.\n.c.c.c..",
-    "wrench": ".c...c..\n.cc.cc..\n..ccc...\n...c....\n...c....\n...c....\n..ccc...",
-}
-
-ICONS16 = {
-    "house": """
-.......rr.......
-......rrrr......
-.....rrrrrr.....
-....rrrrrrrr....
-...rrrrrrrrrr...
-....wwwwwwww....
-....wbbwwbbw....
-....wbbwwbbw....
-....wwwwwwww....
-....wwwnnwww....
-....wwwnnw..ccc.
-....wwwnnw.cbbbc
-..........cbwbbc
-..........cbbbbc
-...........ccccn
-..............nn
-""",
-    "pill": """
-................
-..........kkk...
-.........krrrk..
-........krrrrrk.
-.......krrrrrrk.
-......kwkrrrrk..
-.....kwwwkrrk...
-....kwwwwwkk....
-...kwwwwwwk.....
-..kwwwwwwk......
-..kwwwwwk.......
-...kkkkk........
-...........PP.PP
-..........PPPPPP
-...........PPPP.
-............PP..
-""",
-    "calendar": """
-................
-...c...c...c....
-.kkckkkckkkckkk.
-.krrrrrrrrrrrrk.
-.krrrrrrrrrrrrk.
-.kwwwwwwwwwwwwk.
-.kwgwwgwwrwwgwk.
-.kwwwwwwwwwwwwk.
-.kwgwwrwwgwwgwk.
-.kwwwwwwwwwwwwk.
-.kwgwwgwwgwwwwk.
-.kwwwwwwwwwwwwk.
-.kkkkkkkkkkkkkk.
-""",
-    "robot": """
-..........wwwww.
-.......y.wkwkwkw
-.......k..wwwww.
-...kkkkkkkkkw...
-...kcccccccck...
-...kcbbcccbbck..
-...kcbbcccbbck..
-...kcccccccck...
-...kcckkkkcck...
-...kcccccccck...
-...kkkkkkkkkk...
-.....kcccck.....
-...kkcccccckk...
-...kccccccccck..
-""",
-    "nfc": """
-................
-.kkkkkkk........
-.keeeeek....l...
-.kbbbbbk..l..l..
-.kbbbbbk.l..l.l.
-.kbwbbbk.l..l.l.
-.kbbbbbk.l..l.l.
-.kbbbbbk..l..l..
-.keeeeek....l...
-.keekeek........
-.kkkkkkk..yyyyyy
-..........yooooy
-..........yyyyyy
-""",
-}
-
-
-def qr_icon(seed=3):
-    """A 16x16 QR-looking pattern (it doesn't scan)."""
-    rng = random.Random(seed)
-    g = [["w"] * 16 for _ in range(16)]
-    for y in range(1, 15):
-        for x in range(1, 15):
-            g[y][x] = "k" if rng.random() < .45 else "w"
-    for ox, oy in ((1, 1), (10, 1), (1, 10)):
-        for y in range(5):
-            for x in range(5):
-                edge = x in (0, 4) or y in (0, 4)
-                core = 1 < x < 3 and 1 < y < 3
-                g[oy + y][ox + x] = "k" if edge or core else "w"
-        for i in range(-1, 6):  # quiet zone
-            for yy, xx in ((oy - 1, ox + i), (oy + 5, ox + i), (oy + i, ox - 1), (oy + i, ox + 5)):
-                if 0 <= yy < 16 and 0 <= xx < 16:
-                    g[yy][xx] = "w"
-    return ["".join(r) for r in g]
-
-
-ICONS16["qr"] = qr_icon()
+NAME = "Harinand AS"
+EYEBROW = "PRODUCT ENGINEER · KOCHI, KERALA"
+TAGLINE = "I take half-formed ideas and push them until they have a URL."
+HINT = "pick a card ↓"
 
 # =====================================================================
-# FONTS
+# Colours and geometry
 # =====================================================================
-FONT_SPECS = {
-    "pixel": ("PressStart2P-Regular.ttf", None),
-    "body": ("VT323-Regular.ttf", None),
+INK, INK2 = "#0f1020", "#1d1736"
+CREAM = "#fbf6ee"
+TXT, TXT2, MUTED = "#1d1b2c", "#4a475c", "#8a8799"
+
+W, H = 1200, 680  # the screen
+TOP = 250  # title band; the fan lives below it
+CW, CH = 230, 410  # a card at scale 1
+
+# The cards fan out from a pivot below the screen, so the bottom edge cuts them off.
+# k = steps from the middle: (tilt in degrees, how much lower its top sits, scale)
+PIVOT = (W / 2, H + 300)
+TOP_R = PIVOT[1] - 282  # distance from the pivot to the middle card's top edge
+FAN = [(0, 0, 1.0), (14, 16, .94), (28, 38, .88), (41, 62, .82)]
+
+POP_H, POP_CY = 560, H / 2  # the card once it has popped up
+BACK_W = 960
+
+
+def n(v: float) -> str:
+    return f"{round(v, 2):g}"
+
+
+def esc(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def mix(a: str, b: str, t: float) -> str:
+    """t=0 gives a, t=1 gives b."""
+    pa = [int(a[i:i + 2], 16) for i in (1, 3, 5)]
+    pb = [int(b[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x + (y - x) * t):02x}" for x, y in zip(pa, pb))
+
+
+def dark(c: str) -> str:
+    return mix(c, "#1d1b2c", 0.38)
+
+
+def tint(c: str, t: float = 0.86) -> str:
+    return mix(c, CREAM, t)
+
+
+# =====================================================================
+# Fonts: the portfolio's three faces, subset into each SVG
+# =====================================================================
+# Static cuts of the Google Fonts files in tools/fonts (OFL, licences alongside): Bricolage
+# Grotesque at wght 800 / opsz 96, Instrument Sans at 400 and 600, DM Mono 400.
+FACES = {  # key: (file, fallback for missing glyphs, generic family)
+    "display": ("Bricolage-Display.ttf", "body", "system-ui,sans-serif"),
+    "body": ("InstrumentSans-Regular.ttf", "display", "system-ui,sans-serif"),
+    "semi": ("InstrumentSans-SemiBold.ttf", "display", "system-ui,sans-serif"),
+    "mono": ("DMMono-Regular.ttf", "body", "ui-monospace,monospace"),
 }
-STATS_CHARSET = "".join(chr(c) for c in range(0x20, 0x7F)) + "·—–’é★♥▶→×©"
-STATIC: dict[str, bytes] = {}
-METRICS: dict[str, tuple] = {}
 
 
-def load_fonts():
-    for key, (file, axes) in FONT_SPECS.items():
-        font = TTFont(SRC_FONTS / file)
-        if axes:
-            font = instancer.instantiateVariableFont(font, axes)
-        buf = io.BytesIO()
-        font.save(buf)
-        STATIC[key] = buf.getvalue()
-        f = TTFont(io.BytesIO(STATIC[key]))
-        METRICS[key] = (f.getBestCmap(), f["hmtx"], f["head"].unitsPerEm)
+class Face:
+    def __init__(self, file: str):
+        self.path = FONT_DIR / file
+        font = TTFont(self.path)
+        self.cmap = font.getBestCmap()
+        self.hmtx = font["hmtx"]
+        self.upm = font["head"].unitsPerEm
+
+    def has(self, ch: str) -> bool:
+        return ord(ch) in self.cmap
+
+    def advance(self, ch: str) -> float:
+        return self.hmtx[self.cmap[ord(ch)]][0] / self.upm
 
 
-def woff(key: str, chars: str) -> bytes:
-    font = TTFont(io.BytesIO(STATIC[key]))
-    opts = subset.Options()
-    opts.layout_features = ["kern", "liga", "calt", "ccmp", "locl"]
-    opts.hinting = False
-    sub = subset.Subsetter(opts)
-    sub.populate(text=chars)
-    sub.subset(font)
-    font.flavor = "woff"
-    buf = io.BytesIO()
-    font.save(buf)
-    return buf.getvalue()
+FONTS = {k: Face(f) for k, (f, _, _) in FACES.items()}
+
+
+def face_for(ch: str, key: str) -> str:
+    tried = set()
+    while key not in tried:
+        if FONTS[key].has(ch):
+            return key
+        tried.add(key)
+        key = FACES[key][1]
+    raise ValueError(f"no font has {ch!r}")
 
 
 def width(s: str, font: str, size: float, ls: float = 0.0) -> float:
-    cmap, hmtx, upm = METRICS[font]
-    total = 0
-    for ch in s:
-        g = cmap.get(ord(ch))
-        if g is None:
-            raise SystemExit(f"'{ch}' is not in the {font} font — rephrase {s!r}")
-        total += hmtx[g][0]
-    return total * size / upm + ls * len(s)
+    return sum(FONTS[face_for(ch, font)].advance(ch) for ch in s) * size + ls * len(s)
 
 
 def wrap(s: str, font: str, size: float, max_w: float) -> list[str]:
     lines, cur = [], ""
     for word in s.split():
-        trial = f"{cur} {word}".strip()
-        if cur and width(trial, font, size) > max_w:
+        t = f"{cur} {word}".strip()
+        if cur and width(t, font, size) > max_w:
             lines.append(cur)
             cur = word
         else:
-            cur = trial
-    return lines + ([cur] if cur else [])
+            cur = t
+    return lines + [cur] if cur else lines
 
 
-def finish(name, w, h, title, desc, body, css=""):
-    faces = "\n".join(th.font_face(k, woff(k, "".join(sorted(chars)))) for k, chars in th.USED.items())
-    th.USED.clear()
-    path = OUT / f"{name}.svg"
-    path.write_text(document(w, h, title, desc, "\n".join(body), "\n".join(css), faces), encoding="utf-8")
-    return path
+@lru_cache(maxsize=None)
+def woff(key: str, chars: str) -> bytes:
+    font = TTFont(FONTS[key].path)
+    opts = subset.Options()
+    opts.flavor = "woff"
+    sub = subset.Subsetter(opts)
+    sub.populate(text=chars)
+    sub.subset(font)
+    buf = io.BytesIO()
+    font.save(buf)
+    return buf.getvalue()
 
 
-def ink(rows, colour):
-    return pixels(rows, 0, 0, 1, pal={**PAL, "x": PAL[colour]})
+class Svg:
+    """One SVG file. Remembers which characters each font draws so it can embed just those."""
 
+    def __init__(self):
+        self.used: dict[str, set[str]] = defaultdict(set)
 
-def icon8(name, x, y, px, colour="k", attrs=""):
-    return pixels(ICONS8[name], x, y, px, pal={**PAL, "x": PAL[colour]}, attrs=attrs)
+    def text(self, x, y, s, font, size, fill, anchor="start", ls=0.0, attrs="") -> str:
+        runs: list[list[str]] = []
+        for ch in s:
+            f = face_for(ch, font)
+            self.used[f].add(ch)
+            if runs and runs[-1][0] == f:
+                runs[-1][1] += ch
+            else:
+                runs.append([f, ch])
+        body = "".join(esc(t) if f == font else f'<tspan class="f-{f}">{esc(t)}</tspan>' for f, t in runs)
+        a = f'class="f-{font}" x="{n(x)}" y="{n(y)}" font-size="{n(size)}" fill="{fill}"'
+        if anchor != "start":
+            a += f' text-anchor="{anchor}"'
+        if ls:
+            a += f' letter-spacing="{n(ls)}"'
+        if attrs:
+            a += " " + attrs
+        return f"<text {a}>{body}</text>"
 
+    def para(self, x, y, s, font, size, fill, max_w, lh=1.45) -> tuple[str, float]:
+        """Wrapped text from baseline y. Returns the markup and the last baseline."""
+        lines = wrap(s, font, size, max_w)
+        out = "".join(self.text(x, y + i * size * lh, ln, font, size, fill) for i, ln in enumerate(lines))
+        return out, y + (len(lines) - 1) * size * lh
 
-def chip(x, y, label, border, h=26, size=20):
-    w = width(label, "body", size) + 18
-    return (f'<path class="px" d="{notched(x, y, w, h, 2)}" fill="{PAL[border]}"/>'
-            f'<path class="px" d="{notched(x + 2, y + 2, w - 4, h - 4, 2)}" fill="{SLOT}"/>'
-            + text(x + w / 2, y + h / 2 + size * .3, label, "body", size, PAL["w"], "middle")), w
+    def chip(self, x, y, label, fg, bg, size=14, font="mono", pad=11) -> tuple[str, float]:
+        w, h = width(label, font, size) + pad * 2, size * 2
+        return (f'<rect x="{n(x)}" y="{n(y)}" width="{n(w)}" height="{n(h)}" rx="{n(h / 2)}" fill="{bg}"/>'
+                + self.text(x + w / 2, y + h / 2 + size * 0.36, label, font, size, fg, "middle")), w
 
+    def chips(self, x, y, labels, max_w, fg, bg, size=14, gap=8, font="mono") -> tuple[str, float]:
+        """Chips that wrap onto new rows. Returns the markup and the bottom edge."""
+        out, cx, cy, h = [], x, y, size * 2
+        for label in labels:
+            w = width(label, font, size) + 22
+            if cx > x and cx + w > x + max_w:
+                cx, cy = x, cy + h + gap
+            out.append(self.chip(cx, cy, label, fg, bg, size, font)[0])
+            cx += w + gap
+        return "".join(out), cy + h
 
-# =====================================================================
-# TITLE SCREEN
-# =====================================================================
-def title_screen():
-    W, H = 850, 400
-    sx, sy, sw, sh = 6, 6, W - 18, H - 18
-    ground = 330
-    body, css = [], []
-    body.append(panel(0, 0, W - 6, H - 6, border=PAL["B"], fill=SCREEN, bw=6))
-    body.append(f'<defs><clipPath id="scr"><path d="{notched(sx, sy, sw, sh, 6)}"/></clipPath>'
-                f'<linearGradient id="logo" gradientUnits="userSpaceOnUse" x1="0" y1="{ground - 206}" x2="0" y2="{ground - 158}">'
-                f'<stop offset="0" stop-color="{PAL["y"]}"/><stop offset=".42" stop-color="{PAL["y"]}"/>'
-                f'<stop offset=".42" stop-color="{PAL["o"]}"/><stop offset=".72" stop-color="{PAL["o"]}"/>'
-                f'<stop offset=".72" stop-color="{PAL["r"]}"/><stop offset="1" stop-color="{PAL["r"]}"/></linearGradient></defs>')
-    body.append('<g clip-path="url(#scr)">')
-
-    # starfield, two parallax layers
-    rng = random.Random(7)
-    for li, (count, size, col, op, speed) in enumerate([(50, 2, "c", .5, 18), (22, 3, "w", .85, 42)]):
-        pts = [(rng.uniform(0, sw), rng.uniform(sy + 70, ground - 40)) for _ in range(count)]
-        rects = "".join(f'<rect x="{n(sx + x + dx)}" y="{n(y)}" width="{size}" height="{size}"/>' for dx in (0, sw) for x, y in pts)
-        body.append(f'<g class="px st{li}" fill="{PAL[col]}" fill-opacity="{op}">{rects}</g>')
-        css.append(f".st{li}{{animation:st{li} {n(sw / speed)}s linear infinite}}@keyframes st{li}{{to{{transform:translateX(-{sw}px)}}}}")
-    body.append(pixels(MOON, 740, 92, 4))
-
-    # HUD
-    cols = [34, 262, 470, 668]
-    for (label, value), x in zip(HUD, cols):
-        body.append(text(x, 40, label, "pixel", 16, PAL["w"]))
-        if label == "LIVE":
-            body.append(pixels(th.COIN, x, 50, 2))
-            body.append(text(x + 22, 66, value, "pixel", 16, PAL["w"]))
-        else:
-            body.append(text(x, 66, value, "pixel", 16, PAL["w"]))
-
-    # logo
-    cx, base = W / 2 - 3, ground - 158
-    assert pixel_width(NAME, 48) < sw - 200
-    stroke = 'stroke="{c}" stroke-width="10" stroke-linejoin="miter"'
-    logo = (text(cx + 6, base + 6, NAME, "pixel", 48, PAL["p"], "middle", attrs=stroke.format(c=PAL["p"]))
-            + text(cx, base, NAME, "pixel", 48, PAL["k"], "middle", attrs=stroke.format(c=PAL["k"]))
-            + f'<g class="g1">{text(cx, base, NAME, "pixel", 48, PAL["b"], "middle")}</g>'
-            + f'<g class="g2">{text(cx, base, NAME, "pixel", 48, PAL["r"], "middle")}</g>'
-            + text(cx, base, NAME, "pixel", 48, "url(#logo)", "middle"))
-    body.append(f'<g class="drop">{logo}</g>')
-    css.append(".drop{animation:drop 1.2s steps(16) .15s both}"
-               "@keyframes drop{0%{transform:translateY(-240px)}55%{transform:none}70%{transform:translateY(-18px)}85%,100%{transform:none}}"
-               ".g1,.g2{opacity:0;animation:g1 5.5s steps(1) infinite}.g2{animation-name:g2}"
-               "@keyframes g1{0%,90%{opacity:0;transform:none}91%{opacity:.9;transform:translate(-6px,2px)}93%{opacity:.9;transform:translate(5px,-2px)}95%,100%{opacity:0;transform:none}}"
-               "@keyframes g2{0%,90%{opacity:0;transform:none}91%{opacity:.9;transform:translate(6px,-1px)}93%{opacity:.9;transform:translate(-4px,2px)}95%,100%{opacity:0;transform:none}}")
-    body.append(text(cx, ground - 116, SUBTITLE, "pixel", 16, PAL["b"], "middle"))
-
-    parts = [f'<g class="blink">{text(cx, ground - 72, p, "pixel", 16, PAL["w"], "middle")}</g>' for p in PROMPTS]
-    svg, c = frames(parts, 3.2 * len(PROMPTS), "msg")
-    body.append(svg)
-    css.append(c)
-
-    # palms, slow parallax
-    pw, ph = size_of(PALM)
-    dark = {**PAL, "G": "#0f3b2c", "g": "#17583b", "n": "#4d2c1c", "N": "#2e1a10"}
-    palms = "".join(pixels(PALM, sx + x + dx, ground - ph * 3, 3, pal=dark) for dx in (0, sw) for x in (40, 250, 470, 640))
-    body.append(f'<g class="palms">{palms}</g>')
-    css.append(f".palms{{animation:palms {n(sw / 30)}s linear infinite}}@keyframes palms{{to{{transform:translateX(-{sw}px)}}}}")
-
-    # scrolling ground
-    tile = 64
-    tiles = "".join(pixels(GROUND, sx + i * tile, ground, 4) for i in range(math.ceil(sw / tile) + 2))
-    body.append(f'<g class="ground">{tiles}</g>')
-    css.append(f".ground{{animation:ground .5s linear infinite}}@keyframes ground{{to{{transform:translateX(-{tile}px)}}}}")
-    body.append(text(cx + 2, H - 22, COPYRIGHT, "pixel", 8, PAL["k"], "middle"))
-    body.append(text(cx, H - 24, COPYRIGHT, "pixel", 8, PAL["f"], "middle"))
-
-    # ? block, coin, bug and the hero, all on one 6 s loop
-    px = 4
-    hx, hy = 90, ground - 16 * px
-    block_x, block_y = hx + 32 - 15, hy - 64 - 30
-    body.append(f'<g class="bump">{pixels(QBLOCK, block_x, block_y, 3)}</g>')
-    coin, c = frames([pixels(f, block_x + 3, block_y - 26, 3) for f in COIN_FRAMES], .45, "spin")
-    body.append(f'<g class="coinpop">{coin}{text(block_x + 36, block_y - 12, "+1", "pixel", 8, PAL["w"])}</g>')
-    css.append(c)
-
-    bug_w, bug_h = 12 * 3, 9 * 3
-    bug_x0 = sx + sw + 20
-    target = hx + 32 - bug_w / 2
-    walk, c = frames([pixels(b, bug_x0, ground - bug_h, 3) for b in BUG], .3, "bugwalk")
-    css.append(c)
-    body.append(f'<g class="bugmove"><g class="bugalive">{walk}</g>'
-                f'<g class="bugdead">{pixels(BUG_FLAT, bug_x0, ground - bug_h, 3, pal={**PAL, "x": PAL["w"]})}</g></g>')
-    body.append(f'<g class="score">{text(hx + 32, ground - 40, "+100", "pixel", 8, PAL["y"], "middle")}</g>')
-
-    run, c = frames([pixels(f, hx, hy, px) for f in RUN], .36, "run")
-    css.append(c)
-    body.append(f'<g class="jump">{run}</g>')
-    css.append(f"""
-.jump{{animation:jump 6s ease-in-out infinite}}
-@keyframes jump{{0%,8.33%{{transform:none}}12.5%{{transform:translateY(-64px)}}16.67%,53.33%{{transform:none}}58.33%{{transform:translateY(-72px)}}63.33%{{transform:translateY(-{bug_h}px)}}66.67%,100%{{transform:none}}}}
-.bump{{animation:bump 6s steps(1) infinite}}
-@keyframes bump{{0%,12.4%{{transform:none}}12.5%{{transform:translateY(-8px)}}14.5%,100%{{transform:none}}}}
-.coinpop{{opacity:0;animation:coinpop 6s infinite}}
-@keyframes coinpop{{0%,12.4%{{opacity:0;transform:translateY(14px)}}12.5%{{opacity:1;transform:none}}22%{{opacity:1;transform:translateY(-34px)}}24%,100%{{opacity:0;transform:translateY(-34px)}}}}
-.bugmove{{animation:bugmove 6s linear infinite}}
-@keyframes bugmove{{0%{{transform:none}}63.33%,100%{{transform:translateX({n(target - bug_x0)}px)}}}}
-.bugalive{{animation:bugalive 6s steps(1) infinite}}
-@keyframes bugalive{{0%{{opacity:1}}63.33%,100%{{opacity:0}}}}
-.bugdead{{opacity:0;animation:bugdead 6s steps(1) infinite}}
-@keyframes bugdead{{0%{{opacity:0}}63.33%{{opacity:1}}72%,100%{{opacity:0}}}}
-.score{{opacity:0;animation:score 6s infinite}}
-@keyframes score{{0%,63.3%{{opacity:0;transform:none}}63.4%{{opacity:1;transform:none}}76%,100%{{opacity:0;transform:translateY(-28px)}}}}""")
-
-    body.append("</g>")
-    svg, c = crt("t", sx, sy, sw, sh)
-    body.append(svg)
-    css.append(c)
-    return finish("title", W, H, f"{NAME} — {SUBTITLE}",
-                  "An 8-bit arcade title screen: the pixel hero runs past coconut palms, "
-                  "headbutts a question block for a coin and stomps a bug. "
-                  f"HUD: {HUD[0][1]} public repos, 5 live apps, world KL-07 (Kochi), class of 2027. Open to work.",
-                  body, css)
+    def render(self, w, h, title, desc, body, view=None, css="") -> str:
+        vx, vy, vw, vh = view or (0, 0, w, h)
+        fonts = []
+        for key in sorted(self.used):
+            data = base64.b64encode(woff(key, "".join(sorted(self.used[key] | {" "})))).decode()
+            fonts.append(f"@font-face{{font-family:'pc-{key}';src:url(data:font/woff;base64,{data}) format('woff')}}")
+            fonts.append(f".f-{key}{{font-family:'pc-{key}',{FACES[key][2]}}}")
+        return (
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{n(vw)}" height="{n(vh)}" '
+            f'viewBox="{n(vx)} {n(vy)} {n(vw)} {n(vh)}" role="img" aria-labelledby="t d">\n'
+            f'<title id="t">{esc(title)}</title><desc id="d">{esc(desc)}</desc>\n'
+            f"<style><![CDATA[\n" + "\n".join(fonts) + f"\n{css}\n"
+            "@media (prefers-reduced-motion:reduce){*{animation:none!important}}\n]]></style>\n"
+            f"{body}\n</svg>\n"
+        )
 
 
 # =====================================================================
-# BUTTONS
+# Icons, drawn in a 48-unit box
 # =====================================================================
-def button(slug, label, icon, face, edge, ink_c, index):
-    size = 16
-    W = round(16 + 16 + 12 + pixel_width(label, size) + 18)
-    H = 50
-    body = [
-        f'<path class="px" d="{notched(0, 0, W, H, 4)}" fill="{PAL["k"]}"/>',
-        f'<path class="px" d="{notched(3, 3, W - 6, H - 6, 3)}" fill="{PAL[edge]}"/>',
-        f'<g class="press"><path class="px" d="{notched(3, 3, W - 6, H - 13, 3)}" fill="{PAL[face]}"/>'
-        f'<rect class="px" x="7" y="6" width="{W - 14}" height="3" fill="#fff" fill-opacity=".35"/>'
-        + icon8(icon, 16, 13, 2, ink_c)
-        + text(44, 30, label, "pixel", size, PAL[ink_c]) + "</g>",
+ICONS = {
+    "plane": ['<path d="M5 23 43 7 32 41 23 28Z"/>', '<path d="M23 28 43 7"/>'],
+    "code": ['<path d="M16 13 6 24l10 11M32 13l10 11-10 11M27 9l-6 30"/>'],
+    "briefcase": ['<rect x="6" y="16" width="36" height="24" rx="4"/>', '<path d="M18 16v-5h12v5M6 27h36"/>'],
+    "layers": ['<path d="M24 7 42 16 24 25 6 16Z"/>', '<path d="M6 24l18 9 18-9M6 32l18 9 18-9"/>'],
+    "cap": ['<path d="M3 19 24 10l21 9-21 9Z"/>', '<path d="M12 23v9c0 3 5 6 12 6s12-3 12-6v-9M45 19v11"/>'],
+    "path": ['<path d="M8 40c11 0 5-15 16-15s5-14 16-14" stroke-dasharray="1 6"/>', '<circle cx="8" cy="40" r="3"/>',
+             '<path d="M40 13V3l8 3-8 3"/>'],
+    "mail": ['<rect x="5" y="11" width="38" height="27" rx="4"/>', '<path d="m6 13 18 14 18-14"/>'],
+    "link": ['<rect x="6" y="6" width="36" height="36" rx="8"/>', '<path d="M16 21v12M16 15v1M23 33V21M23 26c0-4 3-5 5-5s5 1 5 5v7"/>'],
+    "globe": ['<circle cx="24" cy="24" r="18"/>', '<path d="M6 24h36M24 6c-6 6-6 30 0 36M24 6c6 6 6 30 0 36"/>'],
+    "doc": ['<path d="M12 5h17l9 9v29H12z"/>', '<path d="M29 5v9h9M18 24h14M18 31h14"/>'],
+}
+
+
+def icon(name, cx, cy, size, color, sw=3.2) -> str:
+    s = size / 48
+    return (f'<g transform="translate({n(cx - size / 2)} {n(cy - size / 2)}) scale({n(s)})" fill="none" stroke="{color}" '
+            f'stroke-width="{n(sw)}" stroke-linecap="round" stroke-linejoin="round">{"".join(ICONS[name])}</g>')
+
+
+# =====================================================================
+# The face of a card, centred on 0,0. Everything scales with its height.
+# =====================================================================
+ICON_Y, TITLE_Y, CAPTION_Y = 88, 160, 184  # from the card's top edge, at scale 1
+
+
+def card_front(svg: Svg, i: int, w: float, h: float) -> str:
+    """Side cards are half hidden in the fan, so their face is laid out in the part that shows."""
+    c = CARDS[i]
+    u = h / CH
+    acc, ink = c["accent"], dark(c["accent"])
+    x0, y0 = -w / 2, -h / 2
+    mid, room = (f * w for f in face_room(i))
+    # The number goes in the top corner that shows: the outer one, or the left on the middle card.
+    side = 1 if i > MID else -1
+    corner = w / 2 - 24 * u
+    out = [
+        f'<rect x="{n(x0)}" y="{n(y0)}" width="{n(w)}" height="{n(h)}" rx="{n(16 * u)}" fill="{CREAM}"/>',
+        f'<rect x="{n(x0 + 9 * u)}" y="{n(y0 + 9 * u)}" width="{n(w - 18 * u)}" height="{n(h - 18 * u)}" rx="{n(10 * u)}" '
+        f'fill="{tint(acc, .9)}" stroke="{tint(acc, .55)}" stroke-width="{n(1.4 * u)}"/>',
+        svg.text(side * corner, y0 + 40 * u, f"{i + 1:02d}", "semi", 15 * u, ink, "end" if side > 0 else "start", ls=0.5 * u),
+        f'<circle cx="{n(-side * corner)}" cy="{n(y0 + 35 * u)}" r="{n(5 * u)}" fill="{acc}"/>',
     ]
-    css = (f".press{{animation:press 4s steps(1) {n(index * .6)}s infinite}}"
-           "@keyframes press{0%,8%{transform:none}9%,15%{transform:translateY(5px)}16%,100%{transform:none}}")
-    return finish(f"btn-{slug}", W, H, label.title(), f"{label.title()} button", body, [css])
+    if c["icon"]:
+        out.append(icon(c["icon"], mid, y0 + ICON_Y * u, 58 * u, ink, 3.2))
+    else:  # the middle card wears a monogram
+        out.append(svg.text(mid, y0 + (ICON_Y + 26) * u, "HA", "display", 68 * u, TXT, "middle", ls=-1 * u))
+    size = min(26 * u, 26 * u * room / width(c["title"], "display", 26 * u))
+    out.append(svg.text(mid, y0 + TITLE_Y * u, c["title"], "display", size, TXT, "middle"))
+    size = min(12.5 * u, 12.5 * u * room / width(c["caption"], "mono", 12.5 * u))
+    out.append(svg.text(mid, y0 + CAPTION_Y * u, c["caption"], "mono", size, TXT2, "middle"))
+    if i == MID:  # the middle card has room for a little more
+        y = y0 + 236 * u
+        out.append(f'<line x1="{n(-w / 2 + 40 * u)}" y1="{n(y)}" x2="{n(w / 2 - 40 * u)}" y2="{n(y)}" stroke="{tint(acc, .5)}" '
+                   f'stroke-width="{n(1.2 * u)}" stroke-dasharray="{n(2 * u)} {n(5 * u)}" stroke-linecap="round"/>')
+        out.append(svg.text(0, y + 40 * u, "B.Tech AI & ML · 2027", "semi", 15 * u, TXT2, "middle"))
+        out.append(svg.text(0, y + 64 * u, "Kochi, Kerala", "body", 15 * u, TXT2, "middle"))
+        pw = width("open to work", "mono", 12.5 * u) + 44 * u
+        out.append(f'<rect x="{n(-pw / 2)}" y="{n(y + 86 * u)}" width="{n(pw)}" height="{n(28 * u)}" rx="{n(14 * u)}" fill="#2fbf71" fill-opacity=".14"/>'
+                   f'<circle cx="{n(-pw / 2 + 16 * u)}" cy="{n(y + 100 * u)}" r="{n(4.5 * u)}" fill="#2fbf71"/>')
+        out.append(svg.text(-pw / 2 + 28 * u, y + 104.5 * u, "open to work", "mono", 12.5 * u, "#1f8a52"))
+    return "".join(out)
+
+
+@lru_cache(maxsize=None)
+def face_room(i: int) -> tuple[float, float]:
+    """Centre and width of the strip of card i's face left uncovered in the fan, as fractions of its width.
+
+    Measured along the icon and title rows; the middle card is fully on show.
+    """
+    _, _, a, s = pose(i)
+    w, h = CW * s, CH * s
+    if i == MID:
+        return 0.0, (w - 40 * s) / w
+    cx, cy = centre(i)
+    r = math.radians(a)
+    order = draw_order()
+    front = order[order.index(i) + 1:]
+    xs = [-w / 2 + 14 * s + k for k in range(int(w - 28 * s))]
+    lo, hi = -w / 2, w / 2
+    for row in (ICON_Y - 30, ICON_Y + 30, TITLE_Y - 20, CAPTION_Y):
+        ly = -h / 2 + row * s
+        shown = [lx for lx in xs if not any(contains(j, cx + lx * math.cos(r) - ly * math.sin(r),
+                                                     cy + lx * math.sin(r) + ly * math.cos(r)) for j in front)]
+        lo, hi = max(lo, min(shown)), min(hi, max(shown))
+    return (lo + hi) / 2 / w, (hi - lo - 20 * s) / w
 
 
 # =====================================================================
-# PLAYER CARD
+# The screen
 # =====================================================================
-def player_card():
-    W = 850
-    body, css = [], []
-    top = 16
-    x0, vx = 244, 384
-    rows_y = [72, 108, 144, 180]
-    stat_y = [236, 270, 304, 338]
-    H = stat_y[-1] + 62
-    body.append(panel(0, top, W - 6, H - top - 6))
-    body.append(tab(24, top, "PLAYER 1", PAL["y"]))
-
-    # portrait
-    bx, by, bs = 30, 50, 176
-    body.append(f'<defs><pattern id="chk" width="32" height="32" patternUnits="userSpaceOnUse">'
-                f'<rect width="32" height="32" fill="{SLOT}"/><rect width="16" height="16" fill="{PANEL}"/><rect x="16" y="16" width="16" height="16" fill="{PANEL}"/></pattern></defs>')
-    body.append(f'<path class="px" d="{notched(bx, by, bs, bs, 6)}" fill="{PAL["l"]}"/>'
-                f'<path class="px" d="{notched(bx + 4, by + 4, bs - 8, bs - 8, 4)}" fill="url(#chk)"/>')
-    face, c = frames([pixels(hero(), bx + 8, by + 8, 10)] * 7 + [pixels(hero(blink=True), bx + 8, by + 8, 10)], 4.0, "idle")
-    body.append(face)
-    css.append(c)
-    body.append(f'<g class="blink">{text(bx + bs / 2, by + bs + 34, "P1 READY", "pixel", 16, PAL["g"], "middle")}</g>')
-
-    for (label, value), y in zip(PLAYER, rows_y):
-        body.append(text(x0, y, label, "pixel", 16, PAL["l"]))
-        body.append(text(vx, y + 2, value, "body", 28, PAL["w"]))
-        assert vx + width(value, "body", 28) < W - 40, value
-    body.append(f'<path class="px" d="M{x0} {rows_y[-1] + 22}h{W - 40 - x0}" stroke="{SLOT}" stroke-width="4" stroke-dasharray="8 8"/>')
-
-    sprites = {"coin": (th.COIN, 2), "heart": (HEART, 2), "star": (STAR, 2), "phone": (PHONE, 2)}
-    k = 0
-    for (label, count, icon, colour), y in zip(PLAYER_STATS, stat_y):
-        body.append(text(x0, y, label, "pixel", 16, PAL[colour]))
-        rows, px = sprites[icon]
-        iw, ih = size_of(rows)
-        step = iw * px + 6
-        for i in range(count):
-            body.append(f'<g class="pop" style="animation-delay:{n(.3 + k * .06)}s">{pixels(rows, vx + i * step, y - ih * px + 1, px)}</g>')
-            k += 1
-        body.append(text(W - 40, y, f"{count:02d}", "pixel", 16, PAL["w"], "end"))
-        assert vx + count * step < W - 90, label
-    special_y = stat_y[-1] + 40
-    body.append(text(bx, special_y, "SPECIAL MOVE", "pixel", 16, PAL["P"]))
-    body.append(text(vx, special_y + 2, SPECIAL, "body", 28, PAL["o"]))
-
-    desc = "; ".join(f"{a}: {b}" for a, b in PLAYER) + ". " + "; ".join(f"{a} {c}" for a, c, *_ in PLAYER_STATS) + f". Special move: {SPECIAL}."
-    return finish("player", W, H, "Player 1", desc, body, css)
+def pose(i: int) -> tuple[float, float, float, float]:
+    """Bottom-centre x, y, tilt and scale of card i."""
+    k = i - MID
+    tilt, drop, s = FAN[abs(k)]
+    a = math.radians(tilt if k > 0 else -tilt)
+    r = TOP_R - drop - CH * s
+    return PIVOT[0] + r * math.sin(a), PIVOT[1] - r * math.cos(a), math.degrees(a), s
 
 
-# =====================================================================
-# BOSS STAGE
-# =====================================================================
-def boss_stage():
-    B = BOSS
-    W = 850
-    top = 16
-    X, col_w = 32, 380
-    body, css = [], []
-    desc_lines = wrap(B["desc"], "body", 24, col_w)
-    y_desc = 160
-    y_pu = y_desc + (len(desc_lines) - 1) * 23 + 38
-    y_chips = y_pu + 12
-    chip_rows, cx, cy = [], X, y_chips
-    for p in B["powerups"]:
-        w = width(p, "body", 20) + 18
-        if cx + w > X + col_w:
-            cx, cy = X, cy + 34
-        chip_rows.append((cx, cy, p))
-        cx += w + 8
-    y_prog = cy + 58
-    H = max(y_prog + 44, 360)
-    body.append(panel(0, top, W - 6, H - top - 6, border=PAL["r"]))
-    body.append(tab(24, top, "BOSS STAGE", PAL["r"]))
+def centre(i: int) -> tuple[float, float]:
+    bx, by, a, s = pose(i)
+    r, h = math.radians(a), CH * s
+    return bx + math.sin(r) * h / 2, by - math.cos(r) * h / 2
 
-    body.append(text(X, 62, B["eyebrow"], "pixel", 8, PAL["l"]))
-    for i, line in enumerate(B["title"]):
-        body.append(text(X, 96 + i * 28, line, "pixel", 16, PAL["y"]))
-    body.append("".join(text(X, y_desc + i * 23, line, "body", 24, PAL["c"]) for i, line in enumerate(desc_lines)))
-    body.append(text(X, y_pu, "POWER-UPS", "pixel", 8, PAL["l"]))
-    for x, y, p in chip_rows:
-        body.append(chip(x, y, p, "b")[0])
-    body.append(text(X, y_prog, f"QUEST {B['phase']}/{B['phases']} · {B['phase_label']}", "pixel", 8, PAL["g"]))
-    for i in range(B["phases"]):
-        cls = "px blink" if i == B["phase"] - 1 else "px"
-        fill = PAL["g"] if i < B["phase"] else SLOT
-        body.append(f'<rect class="{cls}" x="{X + i * 50}" y="{y_prog + 10}" width="44" height="12" fill="{fill}"/>')
 
-    # the scene
-    sx, sy, sw = 440, top + 26, W - 6 - 440 - 26
-    sh = H - 6 - 26 - sy
-    body.append(f'<path class="px" d="{notched(sx - 4, sy - 4, sw + 8, sh + 8, 6)}" fill="{SLOT}"/>')
-    body.append(f'<defs><clipPath id="scene"><path d="{notched(sx, sy, sw, sh, 4)}"/></clipPath></defs><g clip-path="url(#scene)">')
-    body.append(f'<rect x="{sx}" y="{sy}" width="{sw}" height="{sh}" fill="{SCREEN}"/>')
-    rng = random.Random(11)
-    stars = "".join(f'<rect x="{n(sx + rng.uniform(0, sw))}" y="{n(sy + rng.uniform(4, sh * .55))}" width="2" height="2"/>' for _ in range(30))
-    body.append(f'<g class="px" fill="{PAL["c"]}" fill-opacity=".6">{stars}</g>')
-    body.append(f'<rect class="flash" x="{sx}" y="{sy}" width="{sw}" height="{sh}" fill="{PAL["w"]}" opacity="0"/>')
+def contains(i: int, x: float, y: float) -> bool:
+    _, _, a, s = pose(i)
+    cx, cy = centre(i)
+    r = math.radians(a)
+    dx, dy = x - cx, y - cy
+    lx, ly = dx * math.cos(r) + dy * math.sin(r), -dx * math.sin(r) + dy * math.cos(r)
+    return abs(lx) <= CW * s / 2 and abs(ly) <= CH * s / 2
 
-    sea = round(sy + sh * .6)
-    storm_w, _ = size_of(STORM)
-    st_x, st_y = sx + (sw - storm_w * 5) / 2 - 20, sy + round(sh * .14)
-    hp_x = st_x + 20
-    body.append(text(hp_x, st_y - 14, "STORM", "pixel", 8, PAL["w"]))
-    body.append(f'<rect class="px" x="{n(hp_x + 48)}" y="{n(st_y - 22)}" width="84" height="10" fill="{PAL["k"]}"/>'
-                f'<rect class="px" x="{n(hp_x + 50)}" y="{n(st_y - 20)}" height="6" fill="{PAL["r"]}" width="80">'
-                '<animate attributeName="width" dur="16s" repeatCount="indefinite" calcMode="discrete" keyTimes="0;.1;.3;.5;.7;.9" values="80;68;54;40;26;80"/></rect>')
-    body.append(f'<g class="hover">{pixels(STORM, st_x, st_y, 5)}</g>')
-    body.append(f'<g class="bolt">{pixels(BOLT, st_x + 48, st_y + 58, 5)}{pixels(BOLT, st_x + 72, st_y + 98, 5)}</g>')
-    css.append(".hover{animation:hover 1.6s steps(1) infinite}@keyframes hover{50%{transform:translateY(4px)}}"
-               ".bolt{opacity:0;animation:bolt 4s steps(1) infinite}@keyframes bolt{0%,70%{opacity:0}71%,73%{opacity:1}74%,75%{opacity:0}76%,79%{opacity:1}80%,100%{opacity:0}}"
-               ".flash{animation:flash 4s steps(1) infinite}@keyframes flash{0%,70%{opacity:0}71%{opacity:.14}73%,75%{opacity:0}76%{opacity:.1}78%,100%{opacity:0}}")
 
-    # lighthouse on its rock
-    LPX, BPX = 5, 5
-    lh_w, lh_h = size_of(LIGHTHOUSE)
-    lx = sx + sw - 30 - lh_w * LPX
-    ly = sea + 10 - lh_h * LPX
-    lamp_x, lamp_y = lx + 5 * LPX, ly + 1.5 * LPX
-    beam_l = f'<polygon points="{n(lamp_x)},{n(lamp_y)} {n(lamp_x - 170)},{n(lamp_y - 30)} {n(lamp_x - 170)},{n(lamp_y + 26)}" fill="{PAL["y"]}" fill-opacity=".16"/>'
-    beam_r = f'<polygon points="{n(lamp_x)},{n(lamp_y)} {n(lamp_x + 90)},{n(lamp_y - 20)} {n(lamp_x + 90)},{n(lamp_y + 18)}" fill="{PAL["y"]}" fill-opacity=".16"/>'
-    beams, c = frames([beam_l, "", beam_r, ""], 2.4, "beam")
-    body.append(beams)
-    css.append(c)
-    body.append(f'<rect class="px" x="{n(lx - 16)}" y="{sea + 6}" width="{lh_w * LPX + 36}" height="{sh}" fill="{PAL["e"]}"/>'
-                f'<rect class="px" x="{n(lx - 6)}" y="{sea - 2}" width="{lh_w * LPX + 16}" height="12" fill="{PAL["e"]}"/>')
-    body.append(pixels(LIGHTHOUSE, lx, ly, LPX))
+def draw_order() -> list[int]:
+    """Outermost first, so the middle card ends up on top."""
+    out = []
+    for k in range(MID, 0, -1):
+        out += [MID - k, MID + k]
+    return out + [MID]
 
-    # boat, signal, packet
-    boat_x, boat_y = sx + 36, sea + 14 - 10 * BPX
-    ant_x, ant_y = boat_x + 10.5 * BPX, boat_y + .5 * BPX
-    body.append(f'<g class="bob">{pixels(BOAT, boat_x, boat_y, BPX)}'
-                + "".join(f'<rect class="ring r{i}" x="{n(ant_x - 8)}" y="{n(ant_y - 8)}" width="16" height="16" fill="none" stroke="{PAL["g"]}" stroke-width="2"/>' for i in range(2))
-                + "</g>")
-    css.append(".bob{animation:bob 1.2s steps(1) infinite}@keyframes bob{50%{transform:translateY(4px)}}"
-               ".ring{transform-box:fill-box;transform-origin:center;opacity:0;animation:ring 3.2s steps(4) infinite}.r1{animation-delay:.3s}"
-               "@keyframes ring{0%{opacity:1;transform:scale(.4)}25%{opacity:0;transform:scale(2.4)}100%{opacity:0}}")
-    route = f"M{n(ant_x)} {n(ant_y)} Q{n((ant_x + lamp_x) / 2)} {n(min(ant_y, lamp_y) - 80)} {n(lamp_x)} {n(lamp_y)}"
-    steps = 14
-    kp = ";".join(n(i / steps) for i in range(steps + 1)) + ";1"
-    kt = ";".join(n(i / steps * .5) for i in range(steps + 1)) + ";1"
-    body.append(f'<rect class="px" x="-4" y="-4" width="8" height="8" fill="{PAL["g"]}" opacity="0">'
-                f'<animateMotion dur="3.2s" repeatCount="indefinite" path="{route}" calcMode="discrete" keyPoints="{kp}" keyTimes="{kt}"/>'
-                '<animate attributeName="opacity" dur="3.2s" repeatCount="indefinite" calcMode="discrete" keyTimes="0;.5" values="1;0"/></rect>')
-    body.append(f'<g opacity="0">{text(lamp_x - 20, ly - 14, "ALERT SENT!", "pixel", 8, PAL["g"], "middle")}'
-                '<animate attributeName="opacity" dur="3.2s" repeatCount="indefinite" calcMode="discrete" keyTimes="0;.5;.9" values="0;1;0"/></g>')
 
-    # under the water
-    body.append(f'<rect x="{sx}" y="{sea + 9}" width="{sw}" height="{sh}" fill="{PAL["B"]}"/>')
-    for i, (fy, dur, delay, flip) in enumerate([(sea + 50, 9, 0, False), (sea + 92, 12, -5, True)]):
-        fish_frames = [pixels(f, 0, 0, 4, pal={**PAL, "x": PAL["o" if i == 0 else "P"]}) for f in FISH]
-        swim, c = frames(fish_frames, .6, f"fin{i}")
-        css.append(c)
-        mirror = ' transform="scale(-1 1)"' if flip else ""
-        body.append(f'<g class="swim{i}"><g transform="translate(0 {fy})"><g{mirror}>{swim}</g></g></g>')
-        a, b = (sx - 40, sx + sw + 40) if not flip else (sx + sw + 40, sx - 40)
-        css.append(f".swim{i}{{animation:swim{i} {dur}s steps({dur * 6}) {delay}s infinite}}"
-                   f"@keyframes swim{i}{{from{{transform:translateX({a}px)}}to{{transform:translateX({b}px)}}}}")
-    bubbles = "".join(f'<rect class="px bub" style="animation-delay:{-i * .7}s" x="{n(sx + 40 + i * 70)}" y="{sh + sy - 10}" width="4" height="4" fill="{PAL["b"]}"/>' for i in range(5))
-    body.append(bubbles)
-    css.append(f".bub{{animation:bub 3.5s steps(14) infinite}}@keyframes bub{{from{{transform:none;opacity:.8}}to{{transform:translateY(-{n(sy + sh - 10 - sea - 16)}px);opacity:0}}}}")
+def background() -> str:
+    return (
+        "<defs>"
+        f'<linearGradient id="bg" x1="0" y1="0" x2="0" y2="{H}" gradientUnits="userSpaceOnUse">'
+        f'<stop offset="0" stop-color="{INK}"/><stop offset="1" stop-color="{INK2}"/></linearGradient>'
+        f'<radialGradient id="glow" cx="{W / 2}" cy="{H + 80}" r="700" gradientUnits="userSpaceOnUse">'
+        '<stop offset="0" stop-color="#ff8a5c" stop-opacity=".42"/><stop offset=".45" stop-color="#a26bff" stop-opacity=".16"/>'
+        '<stop offset="1" stop-color="#a26bff" stop-opacity="0"/></radialGradient>'
+        '<pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">'
+        '<circle cx="12" cy="12" r="1.2" fill="#fff" fill-opacity=".07"/></pattern>'
+        '<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="12"/></filter>'
+        "</defs>"
+        f'<rect width="{W}" height="{H}" rx="22" fill="url(#bg)"/>'
+        f'<rect width="{W}" height="{H}" rx="22" fill="url(#dots)"/>'
+        f'<rect width="{W}" height="{H}" rx="22" fill="url(#glow)"/>'
+    )
 
-    # waves
-    wave_tile = 48
-    waves = "".join(pixels(WAVE, sx + i * wave_tile, sea, 3) for i in range(math.ceil(sw / wave_tile) + 2))
-    body.append(f'<g class="waves">{waves}</g>')
-    css.append(f".waves{{animation:waves 1.4s linear infinite}}@keyframes waves{{to{{transform:translateX(-{wave_tile}px)}}}}")
-    body.append("</g>")
-    svg, c = crt("b", sx, sy, sw, sh, radius=4)
-    body.append(svg)
-    css.append(c)
 
-    return finish("boss", W, H, "Boss stage: " + " ".join(B["title"]).title(),
-                  f"{B['desc']} Power-ups: {', '.join(B['powerups'])}. Quest {B['phase']} of {B['phases']}: {B['phase_label'].lower()}. "
-                  "Animation: a fishing boat under a storm sends an alert packet to a lighthouse on shore.",
-                  body, css)
+def title_band(svg: Svg) -> tuple[str, str]:
+    cx = W / 2
+    body = (
+        f'<g class="rise r1">{svg.text(cx, 84, EYEBROW, "mono", 16, "#a19fc0", "middle", ls=3)}</g>'
+        f'<g class="rise r2">{svg.text(cx, 160, NAME, "display", 78, CREAM, "middle", ls=-1)}</g>'
+        f'<g class="rise r3">{svg.text(cx, 204, TAGLINE, "body", 23, "#cfcde3", "middle")}</g>'
+        f'<g class="rise r4"><g class="bob">{svg.text(cx, 238, HINT, "mono", 15, "#ffb38a", "middle", ls=1)}</g></g>'
+    )
+    css = (
+        ".rise{animation:rise .9s cubic-bezier(.2,.8,.2,1) both}"
+        ".r2{animation-delay:.08s}.r3{animation-delay:.18s}.r4{animation-delay:.5s}"
+        "@keyframes rise{from{opacity:0;transform:translateY(14px)}}"
+        ".bob{animation:bob 1.8s ease-in-out 1.4s infinite}"
+        "@keyframes bob{50%{transform:translateY(4px)}}"
+    )
+    return body, css
+
+
+def fan(svg: Svg, skip: int | None = None) -> str:
+    out = []
+    for i in draw_order():
+        if i == skip:
+            continue
+        bx, by, a, s = pose(i)
+        w, h = CW * s, CH * s
+        out.append(
+            f'<g transform="translate({n(bx)} {n(by)}) rotate({n(a)}) translate(0 {n(-h / 2)})">'
+            f'<rect x="{n(-w / 2)}" y="{n(-h / 2 + 8)}" width="{n(w)}" height="{n(h)}" rx="{n(16 * s)}" fill="#05040c" '
+            f'fill-opacity=".6" filter="url(#soft)"/>{card_front(svg, i, w, h)}</g>'
+        )
+    return "".join(out)
+
+
+def cuts() -> list[int]:
+    """Where to slice the fan so each strip holds the card that owns most of it.
+
+    Widths come out as multiples of 3 so every strip's percentage is exact.
+    """
+    order = draw_order()
+    owner = []
+    for x in range(W):
+        counts = [0] * len(CARDS)
+        for y in range(TOP, H, 3):
+            for i in reversed(order):
+                if contains(i, x + 0.5, y + 0.5):
+                    counts[i] += 1
+                    break
+        owner.append(max(range(len(CARDS)), key=counts.__getitem__) if any(counts) else None)
+    out = [0]
+    for i in range(1, len(CARDS)):
+        first = next(x for x, o in enumerate(owner) if o is not None and o >= i)
+        out.append(round(first / 3) * 3)
+    return out + [W]
 
 
 # =====================================================================
-# LEVEL CARDS
+# Backs of the cards
 # =====================================================================
-def level_card(idx, slug, world, title, status, desc, powerups, colour, icon):
-    W = 420
-    top = 14
-    body, css = [], []
-    tx = 124
-    tw = W - 6 - tx - 22
-    tsize = 16 if pixel_width(title, 16) <= tw else 12
-    assert pixel_width(title, tsize) <= tw, title
-    lines = wrap(desc, "body", 21, tw)
-    assert len(lines) <= 4, f"{title}: {len(lines)} lines"
-    H = 236
-    body.append(panel(0, top, W - 6, H - top - 6, border=PAL[colour]))
-    body.append(tab(20, top, world, PAL[colour], size=8))
-
-    # status badge
-    badge = status
-    bw = pixel_width(badge, 8) + (30 if status == "LIVE" else 16)
-    bx = W - 6 - 20 - bw
-    body.append(f'<path class="px" d="{notched(bx, top - 9, bw, 20, 2)}" fill="{PAL[colour]}"/>'
-                f'<path class="px" d="{notched(bx + 2, top - 7, bw - 4, 16, 2)}" fill="{PANEL}"/>')
-    if status == "LIVE":
-        body.append(f'<g class="blink">{pixels(HEART, bx + 8, top - 4, 1.5)}</g>')
-        body.append(text(bx + 22, top + 5, badge, "pixel", 8, PAL["g"]))
-    else:
-        body.append(text(bx + 8, top + 5, badge, "pixel", 8, PAL[colour]))
-
-    # thumbnail
-    ix, iy, isz = 22, 44, 88
-    body.append(f'<defs><pattern id="chk" width="16" height="16" patternUnits="userSpaceOnUse">'
-                f'<rect width="16" height="16" fill="{SLOT}"/><rect width="8" height="8" fill="{PANEL}"/><rect x="8" y="8" width="8" height="8" fill="{PANEL}"/></pattern></defs>')
-    body.append(f'<path class="px" d="{notched(ix, iy, isz, isz, 4)}" fill="{PAL[colour]}"/>'
-                f'<path class="px" d="{notched(ix + 4, iy + 4, isz - 8, isz - 8, 2)}" fill="url(#chk)"/>')
-    rows = ICONS16[icon]
-    iw, ih = size_of(rows)
-    ipx = 4
-    body.append(f'<g class="float" style="animation-delay:{n(-idx * .4)}s">{pixels(rows, ix + (isz - iw * ipx) / 2, iy + (isz - ih * ipx) / 2, ipx)}</g>')
-    css.append(".float{animation:float 1.6s steps(1) infinite}@keyframes float{50%{transform:translateY(-4px)}}")
-
-    body.append(text(tx, 64 if tsize == 16 else 62, title, "pixel", tsize, PAL["w"]))
-    body.append("".join(text(tx, 90 + i * 20, line, "body", 21, PAL["c"]) for i, line in enumerate(lines)))
-    x = 22
-    for p in powerups:
-        svg, w = chip(x, H - 6 - 22 - 26, p, colour)
-        body.append(svg)
-        x += w + 8
-    assert x < W - 20, title
-    body.append(pixels(STAR, W - 6 - 22 - 16, H - 6 - 22 - 20, 2, cls="blink"))
-    return finish(f"level-{slug}", W, H, f"{world}: {title.title()}",
-                  f"{status.title()}. {desc} Power-ups: {', '.join(powerups)}.", body, css)
+BX0, BY0, BH = (W - BACK_W) / 2, POP_CY - POP_H / 2, POP_H
+PAD = 56
+CX0, CY0, CWID = BX0 + PAD, BY0 + 158, BACK_W - PAD * 2  # content box
 
 
-# =====================================================================
-# INVENTORY
-# =====================================================================
-def inventory():
-    W = 850
-    top = 16
-    X, slots_x, rh = 30, 156, 46
-    y0 = top + 30
-    H = y0 + len(INVENTORY) * rh + 22
-    body, css = [], []
-    body.append(panel(0, top, W - 6, H - top - 6, border=PAL["y"]))
-    body.append(tab(24, top, "INVENTORY", PAL["y"]))
-    positions = []
-    k = 0
-    for r, (cat, icon, items) in enumerate(INVENTORY):
-        y = y0 + r * rh
-        body.append(icon8(icon, X, y + 8, 2))
-        body.append(text(X + 26, y + 23, cat, "pixel", 8, PAL["y"]))
-        x = slots_x
-        for item in items:
-            w = width(item, "body", 21) + 16
-            assert x + w <= W - 36, f"inventory row {cat} overflows"
-            body.append(f'<g class="pop" style="animation-delay:{n(.1 + k * .03)}s">'
-                        f'<path class="px" d="{notched(x, y + 2, w, 32, 2)}" fill="{PAL["e"]}"/>'
-                        f'<path class="px" d="{notched(x + 2, y + 4, w - 4, 28, 2)}" fill="{SLOT}"/>'
-                        + text(x + w / 2, y + 24, item, "body", 21, PAL["w"], "middle") + "</g>")
-            positions.append((x, y + 2, w))
-            x += w + 7
-            k += 1
-    # a menu cursor that wanders the slots
-    rng = random.Random(5)
-    picks = rng.sample(positions, 10)
-    kt = ";".join(n(i / len(picks)) for i in range(len(picks)))
-    dur = 1.3 * len(picks)
-    anim = lambda attr, vals: f'<animate attributeName="{attr}" dur="{n(dur)}s" repeatCount="indefinite" calcMode="discrete" keyTimes="{kt}" values="{";".join(n(v) for v in vals)}"/>'
-    x, y, w = picks[0]
-    body.append(f'<rect class="px blink" x="{n(x - 3)}" y="{n(y - 3)}" width="{n(w + 6)}" height="38" fill="none" stroke="{PAL["y"]}" stroke-width="3">'
-                + anim("x", [p[0] - 3 for p in picks]) + anim("y", [p[1] - 3 for p in picks]) + anim("width", [p[2] + 6 for p in picks]) + "</rect>")
-    body.append(f'<g>{text(0, 21, "▶", "pixel", 8, PAL["y"], "middle")}'
-                f'<animateTransform attributeName="transform" type="translate" dur="{n(dur)}s" repeatCount="indefinite" calcMode="discrete" keyTimes="{kt}" '
-                f'values="{";".join(f"{n(p[0] - 12)} {n(p[1])}" for p in picks)}"/></g>')
-    desc = " ".join(f"{c.title()}: {', '.join(i)}." for c, _, i in INVENTORY)
-    return finish("inventory", W, H, "Inventory", desc, body, css)
+def tile(x, y, w, h, fill, stroke) -> str:
+    return f'<rect x="{n(x)}" y="{n(y)}" width="{n(w)}" height="{n(h)}" rx="14" fill="{fill}" stroke="{stroke}" stroke-width="1.2"/>'
 
 
-# =====================================================================
-# WORLD MAP
-# =====================================================================
-def world_map():
-    W, H = 850, 336
-    top_y, low_y = 132, 202
-    nodes = [(92 + i * 136, low_y if i % 2 == 0 else top_y) for i in range(len(WORLD_MAP))]
-    pts = [nodes[0]]
-    for (x1, y1), (x2, y2) in zip(nodes, nodes[1:]):
-        mx = (x1 + x2) / 2
-        pts += [(mx, y1), (mx, y2), (x2, y2)]
-    d = f"M{pts[0][0]} {pts[0][1]}" + "".join(f"L{n(x)} {n(y)}" for x, y in pts[1:])
-    seg = [abs(b[0] - a[0]) + abs(b[1] - a[1]) for a, b in zip(pts, pts[1:])]
-    total = sum(seg)
-    node_frac = [0.0]
-    acc = 0
-    for i, s in enumerate(seg):
-        acc += s
-        if (i + 1) % 3 == 0:
-            node_frac.append(acc / total)
+def back_about(svg: Svg, acc: str) -> str:
+    ink = dark(acc)
+    out, y = svg.para(CX0, CY0 + 6, (
+        "I'm a product engineer finishing a B.Tech in AI & ML at Chinmaya Vishwa Vidyapeeth, class of 2027, "
+        "based in Kochi, Kerala. I build things end to end, from the database schema to the last screen, "
+        "and I don't call a project done until it's deployed."), "body", 21, TXT2, CWID, 1.5)
+    out = [out]
+    stats = [("14", "public repos"), ("5", "live apps"), ("2", "internships"), ("2", "mobile apps")]
+    tw, ty = (CWID - 3 * 16) / 4, y + 40
+    for k, (num, label) in enumerate(stats):
+        tx = CX0 + k * (tw + 16)
+        out.append(tile(tx, ty, tw, 104, tint(acc, .9), tint(acc, .6)))
+        out.append(svg.text(tx + 22, ty + 56, num, "display", 42, ink))
+        out.append(svg.text(tx + 22, ty + 84, label, "body", 16, TXT2))
+    fy = ty + 104 + 50
+    out.append(f'<circle cx="{n(CX0 + 7)}" cy="{n(fy - 6)}" r="7" fill="#2fbf71"/>')
+    out.append(svg.text(CX0 + 24, fy, "Open to internships and junior product-engineering roles.", "semi", 19, TXT))
+    return "".join(out)
 
-    body, css = [], []
-    body.append(panel(0, 0, W - 6, H - 6, border=PAL["b"], fill=PAL["B"]))
-    body.append(f'<defs><clipPath id="map"><path d="{notched(4, 4, W - 14, H - 14, 4)}"/></clipPath>'
-                f'<pattern id="grass" width="24" height="24" patternUnits="userSpaceOnUse"><rect width="24" height="24" fill="{PAL["G"]}"/>'
-                f'<rect x="4" y="6" width="4" height="4" fill="{PAL["g"]}" fill-opacity=".5"/><rect x="16" y="16" width="4" height="4" fill="{PAL["g"]}" fill-opacity=".5"/></pattern></defs>'
-                '<g clip-path="url(#map)">')
-    rng = random.Random(9)
-    glints = [(rng.uniform(10, W - 20), rng.choice([rng.uniform(10, 84), rng.uniform(254, H - 20)])) for _ in range(26)]
-    g1 = "".join(f'<rect x="{n(x)}" y="{n(y)}" width="8" height="2"/>' for x, y in glints[::2])
-    g2 = "".join(f'<rect x="{n(x)}" y="{n(y)}" width="8" height="2"/>' for x, y in glints[1::2])
-    svg, c = frames([f'<g class="px" fill="{PAL["b"]}">{g1}</g>', f'<g class="px" fill="{PAL["b"]}">{g2}</g>'], 1.6, "glint")
-    body.append(svg)
-    css.append(c)
 
-    ix, iy, iw, ih = 36, 96, W - 84, 144
-    body.append(f'<path class="px" d="{notched(ix - 6, iy - 6, iw + 12, ih + 12, 12)}" fill="{PAL["f"]}"/>'
-                f'<path class="px" d="{notched(ix, iy, iw, ih, 8)}" fill="url(#grass)"/>')
-    for x, y in [(ix + 10, iy + 10), (ix + 232, iy + 10), (ix + 520, iy + 10), (ix + 740, iy + 100)]:
-        body.append(pixels(PALM, x, y, 2))
-    body.append(f'<path d="{d}" fill="none" stroke="{PAL["f"]}" stroke-width="14" stroke-linecap="square" stroke-linejoin="miter"/>'
-                f'<path d="{d}" fill="none" stroke="{PAL["o"]}" stroke-width="2" stroke-dasharray="4 8"/>')
+PROJECTS = [
+    ("Campus Hub", "Live", "Events, QR tickets and volunteer rosters for a college. The check-in code rotates every 30 seconds.",
+     "Next.js · Postgres · Drizzle", "https://campus-hub-eight-rouge.vercel.app", "https://github.com/Techspell01/campus-hub"),
+    ("PG Finder", "Live", "Student housing search that replaces a pile of WhatsApp forwards with one search box.",
+     "React · TypeScript · Gemini", "https://pgfinder-mu.vercel.app", "https://github.com/Techspell01/Pg-Finder-"),
+    ("MedReminder Circle", "Live", "Medication reminders shared with the family members who'd notice a missed dose.",
+     "React · Vercel", "https://medreminder-tawny.vercel.app", "https://github.com/Techspell01/medreminder"),
+    ("BunkerMe", "Live", "An installable PWA for the attendance maths every student already does in their head.",
+     "PWA · JavaScript", "https://bunkerme.vercel.app", "https://github.com/Techspell01/bunkerme"),
+    ("Quriobot", "Mobile", "A conversational assistant built as a native mobile app, with speech and camera.",
+     "React Native · Expo", None, "https://github.com/Techspell01/quriobot"),
+    ("NFC Habit Tracker", "Hardware", "Log a habit by tapping your phone on a physical NFC tag. Nothing to open.",
+     "Android · NFC", None, "https://github.com/Techspell01/nfc-habit-tracker"),
+]
+MORE_PROJECTS = [
+    ("Restaurant intelligence", "three ML studies from the Cognifyz internship: a "
+     "[cuisine classifier](https://github.com/Techspell01/Ai-Based-Cuisine-Classification), a "
+     "[recommender](https://github.com/Techspell01/Ai-Restaurant-Recommendation) and a "
+     "[location analysis](https://github.com/Techspell01/Restaurants-Location-based-Analysis)"),
+    ("[Marketing channel ROI](https://github.com/Techspell01/marketing-channel-roi-analysis)",
+     "referral traffic converts ~9× better than organic search, confirmed with a chi-square test on GA360 data in BigQuery"),
+    ("[Expense tracker](https://github.com/Techspell01/expense_tracker)",
+     "a server-rendered Flask app, and the first thing I put on GitHub"),
+]
 
-    P = 18.0
-    walk_total, pause = 11.0, .7
-    times, keypts = [0.0], [0.0]
-    t = 0.0
-    arrive = [0.0]
-    for i in range(1, len(node_frac)):
-        t += walk_total * (node_frac[i] - node_frac[i - 1])
-        times.append(t)
-        keypts.append(node_frac[i])
-        arrive.append(t)
-        if i < len(node_frac) - 1:
-            t += pause
-            times.append(t)
-            keypts.append(node_frac[i])
-    times.append(P)
-    keypts.append(1.0)
 
-    for i, ((date, title, sub), (x, y)) in enumerate(zip(WORLD_MAP, nodes)):
-        last = i == len(WORLD_MAP) - 1
-        at = arrive[i] / P
+def back_projects(svg: Svg, acc: str) -> str:
+    ink = dark(acc)
+    out = []
+    gap, cols = 16, 3
+    tw, th = (CWID - gap * (cols - 1)) / cols, 168
+    for k, (name, status, desc, stack, _, _) in enumerate(PROJECTS):
+        tx, ty = CX0 + (k % cols) * (tw + gap), CY0 - 18 + (k // cols) * (th + gap)
+        out.append(tile(tx, ty, tw, th, tint(acc, .92), tint(acc, .62)))
+        pill_bg = {"Live": "#2fbf71", "Mobile": "#4d9bff", "Hardware": "#ff9f43"}[status]
+        pw = width(status, "mono", 11.5) + 16
+        room = tw - 36 - pw - 10
+        out.append(svg.text(tx + 18, ty + 34, name, "semi", min(19, 19 * room / width(name, "semi", 19)), TXT))
+        out.append(f'<rect x="{n(tx + tw - 18 - pw)}" y="{n(ty + 17)}" width="{n(pw)}" height="22" rx="11" fill="{pill_bg}"/>')
+        out.append(svg.text(tx + tw - 18 - pw / 2, ty + 32, status, "mono", 11.5, "#fff", "middle"))
+        out.append(svg.para(tx + 18, ty + 62, desc, "body", 15, TXT2, tw - 36, 1.42)[0])
+        out.append(svg.text(tx + 18, ty + th - 18, stack, "mono", 12, ink))
+    return "".join(out)
+
+
+INTERNSHIPS = [
+    ("AI & ML Intern", "Litmus7", "Infopark, Ernakulam · on-site", "Jun 2026",
+     ["Built the React and TypeScript front end of a retail promotions performance analyzer.",
+      "Helped structure a LangGraph ReAct tool-calling agent with a Qdrant RAG pipeline behind it."],
+     ["React", "TypeScript", "FastAPI", "LangGraph", "Qdrant", "PostgreSQL"]),
+    ("Machine Learning Intern", "Cognifyz Technologies", "Remote", "May – Jun 2026",
+     ["A cuisine classifier that predicts restaurant type from structured data.",
+      "A TF-IDF and cosine-similarity recommender, and a Streamlit + Folium map of where restaurants cluster."],
+     ["Python", "scikit-learn", "pandas", "Streamlit", "Folium"]),
+]
+
+
+def back_internships(svg: Svg, acc: str) -> str:
+    ink = dark(acc)
+    out = []
+    gap = 20
+    cw = (CWID - gap) / 2
+    for k, (role, org, where, when, points, stack) in enumerate(INTERNSHIPS):
+        x, y = CX0 + k * (cw + gap), CY0 - 18
+        out.append(tile(x, y, cw, 352, tint(acc, .92), tint(acc, .6)))
+        x += 22
+        out.append(svg.text(x, y + 40, role, "display", 25, TXT))
+        out.append(svg.text(x, y + 68, org, "semi", 18, ink))
+        out.append(svg.text(x, y + 92, f"{when} · {where}", "mono", 12.5, TXT2))
+        py = y + 132
+        for p in points:
+            out.append(f'<circle cx="{n(x + 4)}" cy="{n(py - 5)}" r="3.5" fill="{acc}"/>')
+            m, last = svg.para(x + 18, py, p, "body", 16, TXT2, cw - 62, 1.42)
+            out.append(m)
+            py = last + 32
+        out.append(svg.chips(x, y + 352 - 22 - 26 * 2 - 8, stack, cw - 44, ink, tint(acc, .72), 12.5)[0])
+    return "".join(out)
+
+
+SKILLS = [
+    ("Languages", ["Python", "TypeScript", "JavaScript", "SQL", "C/C++", "HTML/CSS"]),
+    ("Front end", ["React", "Next.js", "Vite", "Tailwind", "Motion", "PWA"]),
+    ("Back end", ["FastAPI", "Flask", "PostgreSQL", "Drizzle", "SQLite", "Firebase"]),
+    ("AI & LLMs", ["Gemini", "Claude", "Groq", "LangGraph", "Qdrant RAG", "Prompting"]),
+    ("Data & ML", ["scikit-learn", "pandas", "NumPy", "OpenCV", "Streamlit", "BigQuery"]),
+    ("Mobile", ["React Native", "Expo Router", "EAS Build", "Reanimated", "NFC"]),
+    ("Tools", ["Git", "GitHub", "Vercel", "uv", "Android Studio"]),
+]
+
+
+def back_skills(svg: Svg, acc: str) -> str:
+    ink = dark(acc)
+    out = []
+    for k, (label, items) in enumerate(SKILLS):
+        y = CY0 - 20 + k * 45
+        out.append(svg.text(CX0, y + 19, label.upper(), "mono", 12.5, ink, ls=1.5))
+        out.append(svg.chips(CX0 + 132, y, items, CWID - 132, TXT, tint(acc, .78), 13.5, 7)[0])
+    return "".join(out)
+
+
+YEARS = ["Year 1", "Year 2", "Year 3", "Year 4"]
+
+
+def back_education(svg: Svg, acc: str) -> str:
+    ink = dark(acc)
+    y = CY0 - 18
+    out = [tile(CX0, y, CWID, 132, tint(acc, .92), tint(acc, .6)),
+           f'<circle cx="{n(CX0 + 66)}" cy="{n(y + 66)}" r="38" fill="{tint(acc, .72)}"/>',
+           icon("cap", CX0 + 66, y + 64, 44, ink, 3.2),
+           svg.text(CX0 + 128, y + 50, "B.Tech in Artificial Intelligence & Machine Learning", "semi", 23, TXT),
+           svg.text(CX0 + 128, y + 80, "Chinmaya Vishwa Vidyapeeth, Deemed to be University", "body", 17.5, TXT2),
+           svg.text(CX0 + 128, y + 106, "Final year · graduating 2027", "mono", 13, ink)]
+    ry = y + 132 + 64
+    step = CWID / (len(YEARS) - 1)
+    out.append(f'<line x1="{n(CX0)}" y1="{n(ry)}" x2="{n(CX0 + CWID)}" y2="{n(ry)}" stroke="{acc}" stroke-width="3" stroke-linecap="round"/>')
+    for k, label in enumerate(YEARS):
+        x = CX0 + k * step
+        anchor = "start" if k == 0 else "end" if k == len(YEARS) - 1 else "middle"
+        last = k == len(YEARS) - 1
         if last:
-            castle_w, castle_h = size_of(CASTLE)
-            flag, c = frames([pixels(CASTLE, x - 24, y - 22, 3), pixels(FLAG2, x - 24, y - 22, 3)], .8, "flag")
-            body.append(flag)
-            css.append(c)
-        else:
-            body.append(f'<path class="px" d="{notched(x - 15, y - 15, 30, 30, 4)}" fill="{PAL["k"]}"/>'
-                        f'<path class="px" d="{notched(x - 12, y - 12, 24, 24, 3)}" fill="{PAL["o"]}">'
-                        f'<animate attributeName="fill" dur="{P}s" repeatCount="indefinite" calcMode="discrete" keyTimes="0;{at:.4f};.985" values="{PAL["o"]};{PAL["g"]};{PAL["o"]}"/></path>'
-                        + text(x + 1, y + 8, str(i + 1), "pixel", 16, PAL["k"], "middle"))
-        lw = max(pixel_width(date, 8), width(title, "body", 22), width(sub, "body", 19)) + 20
-        lx = min(max(x - lw / 2, 12), W - 18 - lw)
-        ly = 18 if y == top_y else H - 84
-        body.append(f'<path class="px" d="{notched(lx, ly, lw, 62, 4)}" fill="{PAL["k"]}" fill-opacity=".55"/>'
-                    + text(lx + lw / 2, ly + 17, date, "pixel", 8, PAL["y"], "middle")
-                    + text(lx + lw / 2, ly + 38, title, "body", 22, PAL["w"], "middle")
-                    + text(lx + lw / 2, ly + 55, sub, "body", 19, PAL["c"], "middle"))
+            out.append(f'<circle cx="{n(x)}" cy="{n(ry)}" r="13" fill="{acc}" fill-opacity=".25"/>')
+        out.append(f'<circle cx="{n(x)}" cy="{n(ry)}" r="{7 if last else 6}" fill="{acc}"/>')
+        out.append(svg.text(x, ry + 34, label, "semi" if last else "body", 16, TXT if last else TXT2, anchor))
+        out.append(svg.text(x, ry + 54, "now · final year" if last else "done", "mono", 12, ink if last else MUTED, anchor))
+    out.append(svg.para(CX0, ry + 112, "Alongside the degree: two internships in 2026, and everything on the Projects card.",
+                        "body", 19, TXT2, CWID)[0])
+    return "".join(out)
 
-    walk, c = frames([pixels(RUN[0], -16, -30, 2), pixels(RUN[2], -16, -30, 2)], .32, "walk")
-    css.append(c)
-    kt = ";".join(f"{v / P:.4f}" for v in times)
-    kp = ";".join(f"{v:.4f}" for v in keypts)
-    body.append(f'<g><animateMotion dur="{P}s" repeatCount="indefinite" path="{d}" calcMode="linear" keyTimes="{kt}" keyPoints="{kp}"/>'
-                f'<animate attributeName="opacity" dur="{P}s" repeatCount="indefinite" keyTimes="0;.955;.965;.995;1" values="1;1;0;0;1"/>'
-                f"{walk}</g>")
-    body.append("</g>")
-    desc = " → ".join(f"{a}: {b} ({c})" for a, b, c in WORLD_MAP)
-    return finish("worldmap", W, H, "World map", "An overworld map of the journey so far. " + desc, body, css)
+
+JOURNEY = [
+    ("Jul 2024", "Made the GitHub account", "and then shipped nothing for nineteen months."),
+    ("Mar 2026", "First two repos public in 48 hours", "a Flask expense tracker and BunkerMe."),
+    ("Jun 2026", "Two internships at once", "Litmus7 on-site and Cognifyz remote, plus the busiest month of commits."),
+    ("Aug 2026", "Three apps in three days", "all deployed, each behind a live URL."),
+    ("Sep 2026", "Campus Hub, end to end in a week", "rotating QR check-in, hand-rolled auth, Postgres."),
+    ("Now", "Final year of the B.Tech", "graduating in 2027, and open to internships and junior roles."),
+]
+
+
+def back_journey(svg: Svg, acc: str) -> str:
+    ink = dark(acc)
+    out = []
+    lx, row = CX0 + 128, 62
+    y0 = CY0 - 8
+    out.append(f'<line x1="{n(lx)}" y1="{n(y0)}" x2="{n(lx)}" y2="{n(y0 + row * (len(JOURNEY) - 1))}" stroke="{tint(acc, .55)}" stroke-width="2.5"/>')
+    for k, (when, what, more) in enumerate(JOURNEY):
+        y = y0 + k * row
+        last = k == len(JOURNEY) - 1
+        out.append(svg.text(CX0, y + 5, when, "mono", 14, ink if last else TXT2))
+        out.append(f'<circle cx="{n(lx)}" cy="{n(y)}" r="{7 if last else 5.5}" fill="{acc if last else CREAM}" stroke="{acc}" stroke-width="2.5"/>')
+        out.append(svg.text(lx + 28, y + 6, what, "semi", 18.5, TXT))
+        out.append(svg.text(lx + 28, y + 28, more[0].upper() + more[1:], "body", 15.5, TXT2))
+    return "".join(out)
+
+
+CONTACT = [
+    ("mail", "Email", EMAIL, f"mailto:{EMAIL}"),
+    ("link", "LinkedIn", "linkedin.com/in/harinand-as", LINKEDIN),
+    ("globe", "Portfolio", "techspell01.github.io/portfolio", PORTFOLIO),
+    ("doc", "Résumé", "one page, PDF", RESUME),
+]
+
+
+def back_contact(svg: Svg, acc: str) -> str:
+    ink = dark(acc)
+    out, y = svg.para(CX0, CY0 + 6, (
+        "Open to internships, junior product-engineering roles, or a side project that needs someone "
+        "who will actually finish it. I reply fast."), "body", 21, TXT2, CWID, 1.5)
+    out = [out]
+    gap = 16
+    tw, th = (CWID - gap) / 2, 104
+    for k, (ic, label, value, _) in enumerate(CONTACT):
+        tx, ty = CX0 + (k % 2) * (tw + gap), y + 38 + (k // 2) * (th + gap)
+        out.append(tile(tx, ty, tw, th, tint(acc, .92), tint(acc, .6)))
+        out.append(f'<circle cx="{n(tx + 50)}" cy="{n(ty + th / 2)}" r="27" fill="{tint(acc, .7)}"/>')
+        out.append(icon(ic, tx + 50, ty + th / 2, 28, ink, 3.4))
+        out.append(svg.text(tx + 96, ty + 44, label.upper(), "mono", 12.5, ink, ls=1.5))
+        out.append(svg.text(tx + 96, ty + 72, value, "semi", 19, TXT))
+    return "".join(out)
+
+
+BACKS = {
+    "about": ("Hi, I'm Harinand.", back_about),
+    "projects": ("Things I've shipped", back_projects),
+    "internships": ("Where I've worked", back_internships),
+    "skills": ("What I build with", back_skills),
+    "education": ("Where I study", back_education),
+    "journey": ("How I got here", back_journey),
+    "contact": ("Say hi", back_contact),
+}
+
+
+def card_back(svg: Svg, i: int) -> str:
+    c = CARDS[i]
+    acc = c["accent"]
+    heading, content = BACKS[c["slug"]]
+    x0, y0, w, h = BX0, BY0, BACK_W, BH
+    out = [
+        f'<rect x="{n(x0)}" y="{n(y0)}" width="{n(w)}" height="{n(h)}" rx="22" fill="{CREAM}"/>',
+        f'<rect x="{n(x0 + 12)}" y="{n(y0 + 12)}" width="{n(w - 24)}" height="{n(h - 24)}" rx="14" fill="none" '
+        f'stroke="{tint(acc, .55)}" stroke-width="1.5"/>',
+        svg.text(x0 + PAD, y0 + 64, f'{i + 1} OF {len(CARDS)} · {c["title"].upper()}', "mono", 14, dark(acc), ls=2),
+        svg.text(x0 + PAD - 2, y0 + 114, heading, "display", 44, TXT, ls=-0.5),
+        f'<circle cx="{n(x0 + w - 86)}" cy="{n(y0 + 82)}" r="36" fill="{tint(acc, .78)}"/>',
+    ]
+    if c["icon"]:
+        out.append(icon(c["icon"], x0 + w - 86, y0 + 82, 40, dark(acc), 3.2))
+    else:
+        out.append(svg.text(x0 + w - 86, y0 + 94, "HA", "display", 32, TXT, "middle"))
+    out.append(content(svg, acc))
+    out.append(svg.text(x0 + PAD, y0 + h - 30, "links are below the card ↓", "mono", 13, MUTED))
+    out.append(svg.text(x0 + w - PAD, y0 + h - 30, "click the card to put it back", "mono", 13, MUTED, "end"))
+    return "".join(out)
+
+
+def popup(i: int) -> tuple[Svg, str, str]:
+    """The deck, dimmed, with card i flying out of it and flipping over."""
+    svg = Svg()
+    band, _ = title_band(svg)  # without its CSS, so it sits still behind the card
+    bx, by, a, s = pose(i)
+    cx, cy = centre(i)
+    k = POP_H / CH
+    fw = CW * k
+    lift = f"translate({n(cx - W / 2)}px,{n(cy - POP_CY)}px) rotate({n(a)}deg) scale({n(s / k)})"
+    shadow = lambda x, y, w, h: (f'<rect x="{n(x)}" y="{n(y + 16)}" width="{n(w)}" height="{n(h)}" rx="22" fill="#000" '
+                                 f'fill-opacity=".55" filter="url(#soft)"/>')
+    front = (f'<g class="front">{shadow(W / 2 - fw / 2, POP_CY - POP_H / 2, fw, POP_H)}'
+             f'<g transform="translate({n(W / 2)} {n(POP_CY)})">{card_front(svg, i, fw, POP_H)}</g></g>')
+    back = f'<g class="back">{shadow(BX0, BY0, BACK_W, BH)}{card_back(svg, i)}</g>'
+    body = (background() + f'<g class="deck">{band}{fan(svg, skip=i)}</g>'
+            + f'<rect class="dim" width="{W}" height="{H}" rx="22" fill="#07060f" opacity=".74"/>'
+            + f'<g class="fly">{front}{back}</g>')
+    origin = f"transform-origin:{n(W / 2)}px {n(POP_CY)}px"
+    css = (
+        f".dim{{animation:dim .6s ease .1s both}}@keyframes dim{{from{{opacity:0}}}}"
+        f".fly{{{origin};animation:fly .95s cubic-bezier(.22,.8,.25,1) .2s both}}"
+        f"@keyframes fly{{from{{transform:{lift}}}70%{{transform:translate(0px,-14px) rotate(0deg) scale(1.02)}}"
+        f"to{{transform:translate(0px,0px) rotate(0deg) scale(1)}}}}"
+        f".front{{{origin};animation:flipout .26s cubic-bezier(.5,0,.9,.5) 1.05s both}}"
+        f"@keyframes flipout{{to{{transform:scaleX(0)}}}}"
+        f".back{{{origin};animation:flipin .42s cubic-bezier(.15,.8,.3,1.12) 1.31s both}}"
+        f"@keyframes flipin{{from{{transform:scaleX(0)}}to{{transform:scaleX(1)}}}}"
+    )
+    return svg, body, css
 
 
 # =====================================================================
-# CONTINUE?
+# Markdown
 # =====================================================================
-def continue_screen():
-    W, H = 850, 200
-    body, css = [], []
-    body.append(panel(0, 0, W - 6, H - 6, border=PAL["r"], fill=SCREEN))
-    cx = (W - 6) / 2
-    label = "CONTINUE?"
-    lw = pixel_width(label, 32)
-    body.append(text(cx - 26, 74, label, "pixel", 32, PAL["w"], "middle"))
-    digits = [text(cx - 26 + lw / 2 + 30, 74, str(9 - i), "pixel", 32, PAL["r"], "middle") for i in range(10)]
-    svg, c = frames(digits, 10, "count")
-    body.append(svg)
-    css.append(c)
-    body.append(f'<g class="blink">{text(cx, 118, "INSERT COIN ▶ HIRE PLAYER 1", "pixel", 16, PAL["y"], "middle")}</g>')
-    ew = width(EMAIL, "body", 32)
-    body.append(text(cx, 162, EMAIL, "body", 32, PAL["w"], "middle"))
-    for side in (-1, 1):
-        spin, c = frames([pixels(f, cx + side * (ew / 2 + 34) - 12, 140, 3) for f in COIN_FRAMES], .45, f"cs{side + 1}")
-        body.append(spin)
-        css.append(c)
-    svg, c = crt("c", 6, 6, W - 18, H - 18)
-    body.append(svg)
-    css.append(c)
-    return finish("continue", W, H, "Continue?", f"Insert coin to hire player 1: {EMAIL}", body, css)
+def readme(strips: list[int]) -> str:
+    top = (f'<a href="{PORTFOLIO}"><img src="{RAW}/assets/deck-top.svg" width="100%" align="top" '
+           f'alt="Harinand AS. {EYEBROW.title()}. {TAGLINE} Pick a card."></a>')
+    cards = "".join(
+        f'<a href="{BLOB}/cards/{c["slug"]}.md"><img src="{RAW}/assets/deck-{c["slug"]}.svg" '
+        f'width="{n((strips[i + 1] - strips[i]) * 100 / W)}%" align="top" alt="{c["title"]} card"></a>'
+        for i, c in enumerate(CARDS)
+    )
+    return (
+        "<!-- Built by tools/build.py. The deck is one picture cut into a strip per card; "
+        "each strip opens that card's page in cards/. Edit the script, not this file. -->\n\n"
+        f'<p align="center">{top}<br>{cards}</p>\n\n'
+        f'<p align="center"><sub>Pick a card and it flips over &nbsp;·&nbsp; <a href="{PORTFOLIO}">Portfolio</a> · '
+        f'<a href="{LINKEDIN}">LinkedIn</a> · <a href="mailto:{EMAIL}">Email</a> · <a href="{RESUME}">Résumé</a></sub></p>\n'
+    )
+
+
+def page_links(slug: str) -> str:
+    if slug == "projects":
+        rows = "\n".join(
+            f"| **{name}** | {desc} | " + " · ".join(x for x in ([f"[Live]({live})"] if live else []) + [f"[Code]({code})"]) + " |"
+            for name, _, desc, _, live, code in PROJECTS
+        )
+        more = "\n".join(f"- **{name}**: {desc}" for name, desc in MORE_PROJECTS)
+        return f"| Project | What it is | Links |\n|---|---|---|\n{rows}\n\n**Also built**\n\n{more}\n"
+    if slug == "internships":
+        return "\n".join(
+            f"**{role} · {org}** · {when} · {where}  \n" + " ".join(points) + "\n"
+            for role, org, where, when, points, _ in INTERNSHIPS
+        ) + "\nThe three Cognifyz apps: [cuisine classifier](https://github.com/Techspell01/Ai-Based-Cuisine-Classification) · " \
+            "[recommender](https://github.com/Techspell01/Ai-Restaurant-Recommendation) · " \
+            "[location analysis](https://github.com/Techspell01/Restaurants-Location-based-Analysis)\n"
+    if slug == "contact":
+        return "\n".join(f"- **{label}**: [{value}]({href})" for _, label, value, href in CONTACT) + "\n"
+    if slug == "education":
+        return (f"**B.Tech in Artificial Intelligence & Machine Learning**, Chinmaya Vishwa Vidyapeeth, Deemed to be University. "
+                f"Final year, graduating in 2027. [Résumé]({RESUME})\n")
+    if slug == "journey":
+        return f"The longer version, with the commits behind each date, is on my [portfolio]({PORTFOLIO}#journey).\n"
+    if slug == "skills":
+        return "\n".join(f"- **{label}**: {', '.join(items)}" for label, items in SKILLS) + "\n"
+    return (f"[Portfolio]({PORTFOLIO}) · [LinkedIn]({LINKEDIN}) · [Email](mailto:{EMAIL}) · [Résumé]({RESUME})\n")
+
+
+def page(i: int) -> str:
+    c = CARDS[i]
+    prev, nxt = CARDS[i - 1], CARDS[(i + 1) % len(CARDS)]
+    nav = (f'<p align="center"><a href="{BLOB}/cards/{prev["slug"]}.md">← {prev["title"]}</a> &nbsp;·&nbsp; '
+           f'<a href="{PROFILE}"><b>Back to the deck</b></a> &nbsp;·&nbsp; '
+           f'<a href="{BLOB}/cards/{nxt["slug"]}.md">{nxt["title"]} →</a></p>')
+    return (
+        f"<!-- Built by tools/build.py -->\n\n"
+        f'<a href="{PROFILE}"><img src="{RAW}/assets/pop-{c["slug"]}.svg" width="100%" '
+        f'alt="The {c["title"]} card, flipped over: {BACKS[c["slug"]][0]}"></a>\n\n'
+        f"{nav}\n\n{page_links(c['slug'])}"
+    )
 
 
 # =====================================================================
-def main():
-    load_fonts()
-    OUT.mkdir(exist_ok=True)
-    (OUT / "fonts").mkdir(exist_ok=True)
-    for key in FONT_SPECS:
-        (OUT / "fonts" / f"{key}.woff").write_bytes(woff(key, STATS_CHARSET))
-    (OUT / "fonts" / "metrics.json").write_text(json.dumps({"body_advance": {chr(c): width(chr(c), "body", 1) for c in range(0x20, 0x7F)}}, indent=1))
+def write(path: Path, s: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(s, encoding="utf-8", newline="\n")
+    print(f"{path.relative_to(ROOT)}  {len(s.encode()) // 1024} KB")
 
-    made = [title_screen(), player_card(), boss_stage(), inventory(), world_map(), continue_screen()]
-    made += [button(*b, i) for i, b in enumerate(BUTTONS)]
-    made += [level_card(i, *lv) for i, lv in enumerate(LEVELS)]
-    for p in made:
-        ElementTree.parse(p)  # GitHub serves these as standalone images, where any XML error breaks them
-        print(f"{p.stat().st_size / 1024:6.1f} KB  {p.relative_to(th.ROOT)}")
+
+def main() -> None:
+    strips = cuts()
+    print("strips:", strips)
+
+    svg = Svg()
+    band, css = title_band(svg)
+    write(ASSETS / "deck-top.svg", svg.render(W, H, NAME, f"{EYEBROW}. {TAGLINE}", background() + band, (0, 0, W, TOP), css))
+
+    for i, c in enumerate(CARDS):
+        svg = Svg()
+        body = background() + fan(svg)
+        view = (strips[i], TOP, strips[i + 1] - strips[i], H - TOP)
+        write(ASSETS / f"deck-{c['slug']}.svg", svg.render(W, H, f"{c['title']} card", f"{c['title']}: {c['caption']}", body, view))
+
+    for i, c in enumerate(CARDS):
+        svg, body, css = popup(i)
+        write(ASSETS / f"pop-{c['slug']}.svg", svg.render(W, H, f"{c['title']} card", BACKS[c["slug"]][0], body, css=css))
+        write(PAGES / f"{c['slug']}.md", page(i))
+
+    # The whole screen in one file, for checking the cut lines by eye.
+    svg = Svg()
+    band, css = title_band(svg)
+    guides = "".join(f'<line x1="{x}" y1="{TOP}" x2="{x}" y2="{H}" stroke="#0ff" stroke-opacity=".5" stroke-dasharray="4 4"/>' for x in strips[1:-1])
+    (ROOT / "tools" / "preview.svg").write_text(svg.render(W, H, NAME, "", background() + band + fan(svg) + guides, css=css), encoding="utf-8")
+
+    write(ROOT / "README.md", readme(strips))
 
 
 if __name__ == "__main__":
