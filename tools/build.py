@@ -470,6 +470,8 @@ def back_about(svg: Svg, acc: str) -> str:
 PROJECTS = [
     ("Campus Hub", "Live", "Events, QR tickets and volunteer rosters for a college. The check-in code rotates every 30 seconds.",
      "Next.js · Postgres · Drizzle", "https://campus-hub-eight-rouge.vercel.app", "https://github.com/Techspell01/campus-hub"),
+    ("Weee", "Live", "A shared app for couples: plans, a live shopping list, love notes and chat, all synced live.",
+     "React · Supabase · Web Push", "https://homelist-tan.vercel.app", "https://github.com/Techspell01/weee-home"),
     ("PG Finder", "Live", "Student housing search that replaces a pile of WhatsApp forwards with one search box.",
      "React · TypeScript · Gemini", "https://pgfinder-mu.vercel.app", "https://github.com/Techspell01/Pg-Finder-"),
     ("MedReminder Circle", "Live", "Medication reminders shared with the family members who'd notice a missed dose.",
@@ -478,10 +480,10 @@ PROJECTS = [
      "PWA · JavaScript", "https://bunkerme.vercel.app", "https://github.com/Techspell01/bunkerme"),
     ("Quriobot", "Mobile", "A conversational assistant built as a native mobile app, with speech and camera.",
      "React Native · Expo", None, "https://github.com/Techspell01/quriobot"),
-    ("NFC Habit Tracker", "Hardware", "Log a habit by tapping your phone on a physical NFC tag. Nothing to open.",
-     "Android · NFC", None, "https://github.com/Techspell01/nfc-habit-tracker"),
 ]
 MORE_PROJECTS = [
+    ("[NFC Habit Tracker](https://github.com/Techspell01/nfc-habit-tracker)",
+     "log a habit by tapping your phone on a physical NFC tag. Nothing to open"),
     ("Restaurant intelligence", "three ML studies from the Cognifyz internship: a "
      "[cuisine classifier](https://github.com/Techspell01/Ai-Based-Cuisine-Classification), a "
      "[recommender](https://github.com/Techspell01/Ai-Restaurant-Recommendation) and a "
