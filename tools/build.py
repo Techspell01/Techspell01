@@ -46,7 +46,7 @@ CARDS = [
     {"slug": "skills", "title": "Skills", "caption": "the toolbox", "accent": "#ff9f43", "icon": "code"},
     {"slug": "internships", "title": "Internships", "caption": "two in 2026", "accent": "#f2bf3a", "icon": "briefcase"},
     {"slug": "about", "title": "About me", "caption": "start here", "accent": "#ff7a59", "icon": None},
-    {"slug": "projects", "title": "Projects", "caption": "15 projects", "accent": "#2fc4a5", "icon": "layers"},
+    {"slug": "projects", "title": "Projects", "caption": "16 projects", "accent": "#2fc4a5", "icon": "layers"},
     {"slug": "education", "title": "Education", "caption": "B.Tech · 2027", "accent": "#4d9bff", "icon": "cap"},
     {"slug": "journey", "title": "Journey", "caption": "2024 → now", "accent": "#a47bff", "icon": "path"},
 ]
@@ -454,7 +454,7 @@ def back_about(svg: Svg, acc: str) -> str:
         "based in Kochi, Kerala. I build things end to end, from the database schema to the last screen, "
         "and I don't call a project done until it's deployed."), "body", 21, TXT2, CWID, 1.5)
     out = [out]
-    stats = [("16", "public repos"), ("6", "live apps"), ("2", "internships"), ("2", "mobile apps")]
+    stats = [("17", "public repos"), ("7", "live apps"), ("2", "internships"), ("2", "mobile apps")]
     tw, ty = (CWID - 3 * 16) / 4, y + 40
     for k, (num, label) in enumerate(stats):
         tx = CX0 + k * (tw + 16)
@@ -492,6 +492,10 @@ PROJECTS = [
          "PWA · JavaScript", "https://bunkerme.vercel.app", G + "bunkerme"),
     ]),
     ("Data & ML", [
+        ("Sahi Daam", "fair prices across Kerala, live data",
+         "Tells you whether a quoted price is fair, in all 14 Kerala districts. It pulls VFPCK and Agmarknet prices twice "
+         "a day, drops outliers with a MAD z-score, compares districts, and adds gold, fuel and auto-fare rates.",
+         "React · Supabase · SQL · Edge Functions", "https://sahi-daam-lime.vercel.app", G + "sahi-daam"),
         ("Marketing Channel ROI", "1M GA sessions, BigQuery, chi-square",
          "Tests whether channel performance gaps are real or noise. On about 1M Google Analytics sessions in BigQuery, "
          "referral converts at 5.29% against 0.94% for organic search, confirmed with a chi-square test.",

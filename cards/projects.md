@@ -19,6 +19,7 @@
 
 | Project | What it is | Built with | Links |
 |---|---|---|---|
+| **Sahi Daam** | Tells you whether a quoted price is fair, in all 14 Kerala districts. It pulls VFPCK and Agmarknet prices twice a day, drops outliers with a MAD z-score, compares districts, and adds gold, fuel and auto-fare rates. | React · Supabase · SQL · Edge Functions | [Live](https://sahi-daam-lime.vercel.app) · [Code](https://github.com/Techspell01/sahi-daam) |
 | **Marketing Channel ROI** | Tests whether channel performance gaps are real or noise. On about 1M Google Analytics sessions in BigQuery, referral converts at 5.29% against 0.94% for organic search, confirmed with a chi-square test. | Python · SQL · BigQuery · Power BI | [Code](https://github.com/Techspell01/marketing-channel-roi-analysis) |
 | **Restaurant Recommender** | Recommends restaurants from a diner's preferences using TF-IDF vectors and cosine similarity. Cognifyz internship. | Python · scikit-learn · Streamlit | [Code](https://github.com/Techspell01/Ai-Restaurant-Recommendation) |
 | **Cuisine Classifier** | Predicts a restaurant's cuisine from structured data. Cognifyz internship. | Python · scikit-learn | [Code](https://github.com/Techspell01/Ai-Based-Cuisine-Classification) |
