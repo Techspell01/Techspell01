@@ -46,7 +46,7 @@ CARDS = [
     {"slug": "skills", "title": "Skills", "caption": "the toolbox", "accent": "#ff9f43", "icon": "code"},
     {"slug": "internships", "title": "Internships", "caption": "two in 2026", "accent": "#f2bf3a", "icon": "briefcase"},
     {"slug": "about", "title": "About me", "caption": "start here", "accent": "#ff7a59", "icon": None},
-    {"slug": "projects", "title": "Projects", "caption": "16 projects", "accent": "#2fc4a5", "icon": "layers"},
+    {"slug": "projects", "title": "Projects", "caption": "17 projects", "accent": "#2fc4a5", "icon": "layers"},
     {"slug": "education", "title": "Education", "caption": "B.Tech · 2027", "accent": "#4d9bff", "icon": "cap"},
     {"slug": "journey", "title": "Journey", "caption": "2024 → now", "accent": "#a47bff", "icon": "path"},
 ]
@@ -454,7 +454,7 @@ def back_about(svg: Svg, acc: str) -> str:
         "based in Kochi, Kerala. I build things end to end, from the database schema to the last screen, "
         "and I don't call a project done until it's deployed."), "body", 21, TXT2, CWID, 1.5)
     out = [out]
-    stats = [("17", "public repos"), ("7", "live apps"), ("2", "internships"), ("2", "mobile apps")]
+    stats = [("18", "public repos"), ("8", "live apps"), ("2", "internships"), ("2", "mobile apps")]
     tw, ty = (CWID - 3 * 16) / 4, y + 40
     for k, (num, label) in enumerate(stats):
         tx = CX0 + k * (tw + 16)
@@ -492,6 +492,10 @@ PROJECTS = [
          "PWA · JavaScript", "https://bunkerme.vercel.app", G + "bunkerme"),
     ]),
     ("Data & ML", [
+        ("Voc", "speak Malayalam, get it written",
+         "Turns Malayalam and Manglish voice notes into English emails, live-writing sticky notes and shopping lists. "
+         "Its own Manglish engine checks the AI's answers: 57% (rules) and 67% (AI alone) to 90% on unseen notes.",
+         "React · Gemini · Groq · MCP · Evals", "https://usevoc.vercel.app", G + "voc"),
         ("Sahi Daam", "fair prices across Kerala, live data",
          "Tells you whether a quoted price is fair, in all 14 Kerala districts. It pulls VFPCK and Agmarknet prices twice "
          "a day, drops outliers with a MAD z-score, compares districts, and adds gold, fuel and auto-fare rates.",
@@ -645,6 +649,7 @@ JOURNEY = [
     ("Jun 2026", "Two internships at once", "Litmus7 on-site and Cognifyz remote, plus the busiest month of commits."),
     ("Aug 2026", "Three apps in three days", "all deployed, each behind a live URL."),
     ("Sep 2026", "Campus Hub, end to end in a week", "rotating QR check-in, hand-rolled auth, Postgres."),
+    ("Oct 2026", "Two Kerala apps in one week", "Sahi Daam for fair prices, Voc for Malayalam speech to English."),
     ("Now", "Final year of the B.Tech", "graduating in 2027, and open to internships and junior roles."),
 ]
 
@@ -652,7 +657,8 @@ JOURNEY = [
 def back_journey(svg: Svg, acc: str) -> str:
     ink = dark(acc)
     out = []
-    lx, row = CX0 + 128, 62
+    # 62 px a row, squeezed so any number of steps ends where the 6th used to
+    lx, row = CX0 + 128, min(62, 5 * 62 / (len(JOURNEY) - 1))
     y0 = CY0 - 8
     out.append(f'<line x1="{n(lx)}" y1="{n(y0)}" x2="{n(lx)}" y2="{n(y0 + row * (len(JOURNEY) - 1))}" stroke="{tint(acc, .55)}" stroke-width="2.5"/>')
     for k, (when, what, more) in enumerate(JOURNEY):
